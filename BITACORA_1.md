@@ -239,3 +239,24 @@ pasar a producción.
 - [ ] Módulo de FAQ (CRUD desde panel de coordinadora)
 - [ ] Módulo de Contabilidad (movimientos, balances mensuales automáticos + PDF)
 - [ ] Backend queda completo después de estos 4 módulos — arrancar frontend
+
+### Sesión 5 — 03/07/2026 — Backend: módulo de Noticias completo
+
+**Se hizo:**
+
+- Modelo `Noticia` (con comentarios embebidos y likes por referencia a usuarias).
+- Endpoint genérico de subida de imágenes a Cloudinary (`/api/uploads/imagen`),
+  reutilizable para noticias y testimonios.
+- CRUD completo de noticias (público en lectura, coordinadora/admin en escritura).
+- Likes (toggle) y comentarios abiertos a cualquier usuaria autenticada;
+  eliminación de comentarios restringida a coordinadora/admin.
+- Se actualizó `multer` de 1.x a 2.x por vulnerabilidades conocidas en la
+  versión anterior (advertencia de npm).
+- Probado con éxito: creación de noticia vía curl.
+
+**Pendiente para la próxima sesión:**
+
+- [ ] Módulo de Testimonios (CRUD desde panel de coordinadora)
+- [ ] Módulo de FAQ (CRUD desde panel de coordinadora)
+- [ ] Módulo de Contabilidad (movimientos, balances mensuales automáticos + PDF)
+- [ ] Backend queda completo después de estos 3 módulos — arrancar frontend

@@ -8,6 +8,8 @@ const examenRoutes = require("./routes/examenRoutes");
 const intentoExamenRoutes = require("./routes/intentoExamenRoutes");
 const progresoRoutes = require("./routes/progresoRoutes");
 const diplomaRoutes = require("./routes/diplomaRoutes");
+const uploadRoutes = require("./routes/uploadRoutes");
+const noticiaRoutes = require("./routes/noticiaRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -31,6 +33,8 @@ app.use("/api/examenes", examenRoutes);
 app.use("/api/intentos-examen", intentoExamenRoutes);
 app.use("/api/progreso", progresoRoutes);
 app.use("/api/diplomas", diplomaRoutes);
+app.use("/api/uploads", uploadRoutes);
+app.use("/api/noticias", noticiaRoutes);
 
 // Cualquier ruta no encontrada
 app.use((req, res) => {
