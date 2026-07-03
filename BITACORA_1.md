@@ -192,3 +192,25 @@ pasar a producción.
 - [ ] Endpoint para que la coordinadora confirme pago en efectivo
 - [ ] Endpoint para crear inscripción (elegir plan al momento de inscribir)
 - [ ] Middleware de roles aplicado (solo coordinadora/admin pueden confirmar pagos)
+
+### Sesión 3 — 03/07/2026 — Backend: inscripciones y pagos funcionando
+
+**Se hizo:**
+
+- Modelos `Configuracion`, `Inscripcion`, `ProgresoEstudiante`.
+- Endpoints de configuración (precios de planes, editable solo por admin).
+- Endpoints de inscripción: crear inscripción, confirmar pago (coordinadora/admin),
+  listar inscripciones. Al confirmar el pago se crea automáticamente el registro
+  de `ProgresoEstudiante` (arranca en sesionActualDesbloqueada: 0).
+- Probado con éxito vía curl: creación de inscripción, confirmación de pago,
+  verificación de permisos por rol (admin vs coordinadora vs estudiante).
+- Middleware de roles (`permitirRoles`) confirmado funcionando correctamente.
+
+**Pendiente para la próxima sesión:**
+
+- [ ] Modelos `Sesion`, `Examen`, `IntentoExamen`
+- [ ] Script de seed para las 3 sesiones base (contenido teórico real pendiente
+      de investigación de la Ley 63-17 de Tránsito de RD)
+- [ ] Endpoint para que la coordinadora desbloquee sesión/examen a una estudiante
+- [ ] Endpoint para que la estudiante inicie y entregue un examen (con timer de 30 min)
+- [ ] Lógica de 3 intentos máximo y actualización de progreso al aprobar

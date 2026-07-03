@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const authRoutes = require("./routes/authRoutes");
+const configuracionRoutes = require("./routes/configuracionRoutes");
+const inscripcionRoutes = require("./routes/inscripcionRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -17,6 +19,8 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/configuracion", configuracionRoutes);
+app.use("/api/inscripciones", inscripcionRoutes);
 
 // Cualquier ruta no encontrada
 app.use((req, res) => {
