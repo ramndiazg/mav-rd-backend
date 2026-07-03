@@ -214,3 +214,28 @@ pasar a producción.
 - [ ] Endpoint para que la coordinadora desbloquee sesión/examen a una estudiante
 - [ ] Endpoint para que la estudiante inicie y entregue un examen (con timer de 30 min)
 - [ ] Lógica de 3 intentos máximo y actualización de progreso al aprobar
+
+### Sesión 4 — 03/07/2026 — Backend: módulo de Diplomas completo
+
+**Se hizo:**
+
+- Modelos `Sesion`, `Examen`, `IntentoExamen`, `Diploma`.
+- Script de seed para las 3 sesiones base (contenido teórico pendiente de
+  investigación de la Ley 63-17 — placeholder por ahora).
+- Endpoints de sesiones (ver/editar), exámenes (crear versiones, desbloquear a
+  estudiante), intentos de examen (iniciar/entregar con cálculo de nota).
+- Endpoints de diplomas: listar elegibles, generar (PDF con pdf-lib + subida a
+  Cloudinary + código de verificación único), verificación pública sin login.
+- **Probado con éxito el ciclo completo end-to-end**: registro → inscripción →
+  confirmación de pago → 3 sesiones desbloqueadas/aprobadas → diploma generado
+  con PDF real accesible en Cloudinary → verificación pública del código.
+- Confirmado: reglas de negocio funcionando (orden estricto de sesiones, límite
+  de 3 intentos, nota mínima 70%, diploma requiere `cursoCompletado: true`).
+
+**Pendiente para la próxima sesión:**
+
+- [ ] Módulo de Noticias (CRUD + likes + comentarios)
+- [ ] Módulo de Testimonios (CRUD desde panel de coordinadora)
+- [ ] Módulo de FAQ (CRUD desde panel de coordinadora)
+- [ ] Módulo de Contabilidad (movimientos, balances mensuales automáticos + PDF)
+- [ ] Backend queda completo después de estos 4 módulos — arrancar frontend
