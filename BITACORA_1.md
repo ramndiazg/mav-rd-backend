@@ -165,3 +165,30 @@ razonablemente simples de mantener por un solo desarrollador.
 - ¿El monto de inscripción (`normal`/`vip`) debe ser editable por el admin desde el
   panel, o fijo en el código? (Recomendado: editable, se documentará como tal en
   `DATABASE.md` salvo objeción).
+
+  ### Sesión 2 — 03/07/2026 — Backend: autenticación funcionando
+
+  **Se hizo:**
+
+- Scaffold inicial del backend: estructura de carpetas, conexión a MongoDB Atlas,
+  modelo `User`, y flujo completo de autenticación (registro, login, JWT).
+- Resuelto: el cluster de MongoDB Atlas es compartido con otra app existente.
+  Solución: se usa una base de datos separada dentro del mismo cluster,
+  agregando `/mav_rd` en el connection string antes del `?`. No hay riesgo de
+  cruce de datos entre apps porque son bases de datos independientes.
+- Probado con éxito vía curl: `/api/health`, `POST /api/auth/registro`,
+  `POST /api/auth/login`. Todo responde correctamente.
+- Commit y push realizados.
+
+**Nota técnica importante:** el `MONGODB_URI` real está en `.env` (no se sube a
+git). El cluster `mujeresalvolante.rd4sofa.mongodb.net` es compartido con otra
+aplicación — nuestra app usa exclusivamente la base de datos `mav_rd` dentro de
+ese cluster. La contraseña del usuario de base de datos se rotará antes de
+pasar a producción.
+
+**Pendiente para la próxima sesión:**
+
+- [ ] Modelo `Inscripcion` + `Configuracion` (precios de planes normal/vip editables)
+- [ ] Endpoint para que la coordinadora confirme pago en efectivo
+- [ ] Endpoint para crear inscripción (elegir plan al momento de inscribir)
+- [ ] Middleware de roles aplicado (solo coordinadora/admin pueden confirmar pagos)
