@@ -144,5 +144,6 @@ vite.config.ts.timestamp-*
 
 node_modules/
 .env
+.env.example
 .DS_Store
 npm-debug.log*
