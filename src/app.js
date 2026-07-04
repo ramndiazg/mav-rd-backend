@@ -18,7 +18,23 @@ const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
 
-app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+const origenesPermitidos = [
+  "http://localhost:3000",
+  process.env.FRONTEND_URL, // la URL de Vercel en producción
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || origenesPermitidos.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("No permitido por CORS"));
+      }
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 // Ruta de salud, para verificar rápido que el servidor está vivo

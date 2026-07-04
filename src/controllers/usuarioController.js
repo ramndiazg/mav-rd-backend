@@ -62,7 +62,7 @@ async function crearCoordinadora(req, res, next) {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const coordinadora = await User.create({
+    const coordinadoraCreada = await User.create({
       nombre,
       apellido,
       cedula,
@@ -73,6 +73,11 @@ async function crearCoordinadora(req, res, next) {
       fechaNacimiento,
       rol: "coordinadora",
     });
+
+    // Se vuelve a consultar excluyendo passwordHash antes de responder al frontend
+    const coordinadora = await User.findById(coordinadoraCreada._id).select(
+      "-passwordHash",
+    );
 
     res.status(201).json({ success: true, data: coordinadora });
   } catch (error) {

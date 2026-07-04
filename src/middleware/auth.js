@@ -14,7 +14,7 @@ async function protegerRuta(req, res, next) {
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const usuario = await User.findById(decoded.id);
+    const usuario = await User.findById(decoded.id).select("-passwordHash");
     if (!usuario || !usuario.activo) {
       return res
         .status(401)

@@ -39,7 +39,7 @@ async function registro(req, res, next) {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const nuevoUsuario = await User.create({
+    const nuevoUsuarioCreado = await User.create({
       nombre,
       apellido,
       cedula,
@@ -50,6 +50,11 @@ async function registro(req, res, next) {
       fechaNacimiento,
       rol: "estudiante",
     });
+
+    // Se vuelve a consultar excluyendo passwordHash antes de responder al frontend
+    const nuevoUsuario = await User.findById(nuevoUsuarioCreado._id).select(
+      "-passwordHash",
+    );
 
     const token = generarToken(nuevoUsuario._id);
 
@@ -95,7 +100,14 @@ async function login(req, res, next) {
 
     const token = generarToken(usuario._id);
 
-    res.json({ success: true, data: { usuario, token } });
+    // Se vuelve a consultar excluyendo passwordHash antes de responder al frontend.
+    // (Asignar `usuario.passwordHash = undefined` no es suficiente: Mongoose puede
+    // seguir serializando el campo al convertir el documento a JSON.)
+    const usuarioSinHash = await User.findById(usuario._id).select(
+      "-passwordHash",
+    );
+
+    res.json({ success: true, data: { usuario: usuarioSinHash, token } });
   } catch (error) {
     next(error);
   }
@@ -103,6 +115,7 @@ async function login(req, res, next) {
 
 // GET /api/auth/perfil — requiere estar autenticada
 async function perfil(req, res) {
+  // req.usuario ya viene sin passwordHash (excluido en el middleware protegerRuta)
   res.json({ success: true, data: { usuario: req.usuario } });
 }
 
