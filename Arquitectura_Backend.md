@@ -1,127 +1,144 @@
-# Arquitectura del Backend — `mav-rd-backend`
+Arquitectura del Backend — mav-rd-backend
 
-**Stack:** Node.js + Express + Mongoose (MongoDB Atlas) + JWT + Cloudinary + pdf-lib/Puppeteer
+Stack: Node.js + Express + Mongoose (MongoDB Atlas) + JWT + Cloudinary (pdf-lib para PDFs)
 
-## Estructura de carpetas
+Este documento refleja la implementación REAL y probada del backend, no el plan
+inicial. Es la fuente de verdad para construir el frontend.
 
-```
+Estructura de carpetas
+
 mav-rd-backend/
 ├── src/
-│   ├── config/
-│   │   ├── db.js              # conexión a MongoDB Atlas
-│   │   └── cloudinary.js      # configuración de Cloudinary
-│   ├── models/
-│   │   ├── User.js
-│   │   ├── Inscripcion.js
-│   │   ├── Configuracion.js
-│   │   ├── Sesion.js
-│   │   ├── Examen.js
-│   │   ├── IntentoExamen.js
-│   │   ├── ProgresoEstudiante.js
-│   │   ├── Diploma.js
-│   │   ├── Noticia.js
-│   │   ├── Testimonio.js
-│   │   ├── FAQ.js
-│   │   ├── MovimientoContable.js
-│   │   └── BalanceMensual.js
-│   ├── controllers/           # lógica de negocio por recurso
-│   ├── routes/                # definición de endpoints por recurso
-│   ├── middleware/
-│   │   ├── auth.js            # verifica JWT
-│   │   ├── roleCheck.js       # verifica rol (estudiante/coordinadora/admin)
-│   │   └── errorHandler.js
-│   ├── utils/
-│   │   ├── pdfGenerator.js    # genera diplomas y balances en PDF
-│   │   ├── verificationCode.js
-│   │   └── examScorer.js      # calcula calificación de examen
-│   ├── app.js                 # configuración de Express (middlewares, rutas)
-│   └── server.js              # arranque del servidor
-├── .env.example
-├── .gitignore
-├── package.json
-└── README.md
-```
+│ ├── config/
+│ │ ├── db.js
+│ │ └── cloudinary.js
+│ ├── models/
+│ │ ├── User.js, Inscripcion.js, Configuracion.js, Sesion.js, Examen.js,
+│ │ │ IntentoExamen.js, ProgresoEstudiante.js, Diploma.js, Noticia.js,
+│ │ │ Testimonio.js, FAQ.js, MovimientoContable.js, BalanceMensual.js
+│ ├── controllers/ (uno por recurso, mismos nombres que los modelos)
+│ ├── routes/ (uno por recurso)
+│ ├── middleware/
+│ │ ├── auth.js → protegerRuta (verifica JWT), permitirRoles(...roles)
+│ │ ├── upload.js → multer en memoria, solo imágenes, máx 5MB
+│ │ └── errorHandler.js
+│ ├── utils/
+│ │ ├── pdfGenerator.js → generarDiplomaPDF, generarBalancePDF
+│ │ ├── cloudinaryUpload.js → subirBuffer(buffer, {folder, resourceType, filename})
+│ │ ├── verificationCode.js → generarCodigoVerificacion (formato MAV-2026-000001)
+│ │ └── seedSesiones.js → script, correr una vez: node src/utils/seedSesiones.js
+│ ├── app.js
+│ └── server.js
+├── .env (no se sube — ver .env.example)
+└── package.json
 
-## Variables de entorno (`.env.example`)
+🔑 AUTENTICACIÓN — IMPORTANTE PARA EL FRONTEND
 
-```
-PORT=4000
-MONGODB_URI=mongodb+srv://usuario:password@cluster.mongodb.net/mav_rd
-JWT_SECRET=cambiar_por_un_secreto_largo_y_random
-JWT_EXPIRES_IN=7d
-CLOUDINARY_CLOUD_NAME=
-CLOUDINARY_API_KEY=
-CLOUDINARY_API_SECRET=
-FRONTEND_URL=http://localhost:3000
-```
+El backend NO usa cookies. El login devuelve un JWT en el body de la respuesta:
 
-## Endpoints principales (v1)
+json{ "success": true, "data": { "usuario": {...}, "token": "eyJ..." } }
 
-### Auth
+El frontend debe:
 
-- `POST /api/auth/registro` — crea cuenta de estudiante (gratis)
-- `POST /api/auth/login`
-- `GET /api/auth/perfil` — requiere JWT
+Guardar el token (recomendado: localStorage o estado en memoria + sessionStorage).
+Enviarlo en cada request protegido como header: Authorization: Bearer <token>.
+El token expira en 7 días (configurable vía JWT_EXPIRES_IN).
+No hay endpoint de "refresh token" — al expirar, la usuaria debe volver a loguearse.
+Para saber si una sesión sigue siendo válida al cargar la app, llamar a
+GET /api/auth/perfil con el token guardado; si responde 401, redirigir a login.
 
-### Inscripciones (coordinadora/admin)
+Roles: estudiante, coordinadora, admin. El registro público (/api/auth/registro)
+siempre crea cuentas con rol estudiante — no hay forma de auto-registrarse como
+coordinadora o admin (por diseño, es una medida de seguridad). Las cuentas de
+coordinadora las crea la fundadora (admin) vía POST /api/usuarios/coordinadora.
 
-- `POST /api/inscripciones` — crear inscripción para una estudiante (elige plan)
-- `PATCH /api/inscripciones/:id/confirmar-pago` — coordinadora marca como pagado
-- `GET /api/inscripciones` — listar (filtrable por estado)
+Convención de respuestas
 
-### Configuración (admin)
+Todas las respuestas son JSON con la forma:
 
-- `GET /api/configuracion`
-- `PATCH /api/configuracion/:clave` — editar precio de planes, etc.
+json{ "success": true, "data": {...} }
+{ "success": false, "error": "mensaje en español, listo para mostrar al usuario" }
 
-### Aula Virtual — Sesiones y exámenes
+Referencia completa de endpoints
 
-- `GET /api/sesiones/:numero` — teoría + videos (requiere pago confirmado)
-- `GET /api/examenes/sesion/:sesionId` — coordinadora ve versiones disponibles
-- `POST /api/examenes/:examenId/desbloquear` — coordinadora asigna examen a estudiante
-- `POST /api/intentos-examen/:id/iniciar` — estudiante inicia intento (arranca timer)
-- `POST /api/intentos-examen/:id/entregar` — envía respuestas, calcula nota
-- `GET /api/progreso/:userId` — estado consolidado de avance
+Auth (/api/auth)
 
-### Diplomas
+MétodoRutaRolDescripciónPOST/registropúblicoCrea cuenta de estudiantePOST/loginpúblicoDevuelve { usuario, token }GET/perfilautenticadaDatos del usuario del token actual
 
-- `GET /api/diplomas/elegibles` — coordinadora ve quiénes completaron el curso
-- `POST /api/diplomas/:userId/generar` — genera PDF + código de verificación
-- `GET /api/diplomas/verificar/:codigo` — endpoint público, sin login
+Usuarios (/api/usuarios)
 
-### Noticias
+MétodoRutaRolDescripciónGET/?rol=&search=&activo=coordinadora, adminBuscar usuarias (para elegir estudiante al inscribir)POST/coordinadoraadminCrear cuenta de coordinadoraPATCH/:id/estadoadminBody { activo: bool }PATCH/:id/roladminBody { rol }
 
-- `GET /api/noticias` — público
-- `POST /api/noticias` — coordinadora/admin
-- `PATCH /api/noticias/:id` / `DELETE /api/noticias/:id`
-- `POST /api/noticias/:id/like` — requiere login
-- `POST /api/noticias/:id/comentarios` — requiere login
-- `DELETE /api/noticias/:id/comentarios/:comentarioId` — coordinadora/admin
+Configuración (/api/configuracion)
 
-### Testimonios y FAQ
+MétodoRutaRolDescripciónGET/público{ precio_plan_normal, precio_plan_vip }PATCH/:claveadminBody { valor }
 
-- CRUD estándar en `/api/testimonios` y `/api/faqs` (lectura pública, escritura
-  restringida a coordinadora/admin)
+Inscripciones (/api/inscripciones) — todo requiere coordinadora o admin
 
-### Contabilidad (admin)
+MétodoRutaDescripciónPOST/Body { userId, tipoPlan: 'normal'|'vip', monto }GET/?estadoPago=Listar (con datos de la estudiante poblados)PATCH/:id/confirmar-pagoMarca pagado, crea ProgresoEstudiante y un MovimientoContable automático
 
-- `GET /api/contabilidad/movimientos`
-- `POST /api/contabilidad/movimientos`
-- `GET /api/contabilidad/balances` — historial
-- `POST /api/contabilidad/balances/generar` — genera balance del mes + PDF
-- `GET /api/contabilidad/balances/:id/pdf`
+Sesiones (/api/sesiones)
 
-## Convenciones
+MétodoRutaRolDescripciónGET/coordinadora, adminLas 3 sesiones completas (gestión)GET/:numeroestudianteSolo si numero <= sesionActualDesbloqueadaPATCH/:numeroadminEditar teoría/videos
 
-- Respuestas JSON consistentes: `{ success: boolean, data, error }`.
-- Todas las rutas privadas pasan por `middleware/auth.js` y, si aplica,
-  `middleware/roleCheck.js`.
-- Validación de entrada con una librería ligera (ej. `express-validator` o `zod`),
-  gratuita y sin dependencias de pago.
+Exámenes (/api/examenes) — todo coordinadora/admin
 
-## Testing antes de cada commit importante
+MétodoRutaDescripciónPOST/Crear versión: { sesionId, nombreVersion, preguntas: [10 exactas] }GET/sesion/:sesionIdVersiones disponibles de esa sesiónPOST/:examenId/desbloquearBody { userId } → crea un IntentoExamen, valida orden y límite de 3 intentos
 
-- Levantar servidor local y probar endpoints críticos con Postman/Thunder Client
-  o `curl` (login, registro, confirmación de pago, examen, generación de diploma).
-- Verificar que las variables de entorno sensibles nunca se suban al repo
-  (`.env` debe estar en `.gitignore`, solo se sube `.env.example`).
+Intentos de examen (/api/intentos-examen) — todo estudiante (dueña del intento)
+
+MétodoRutaDescripciónPOST/:id/iniciarArranca el timer, devuelve preguntas SIN respuesta correctaPOST/:id/entregarBody { respuestas: [10 índices] } → califica (≥70% aprueba)
+
+Progreso (/api/progreso)
+
+MétodoRutaRolDescripciónGET/meestudianteSu propio progresoGET/:userIdcoordinadora, adminProgreso de una estudiante
+
+Diplomas (/api/diplomas)
+
+MétodoRutaRolDescripciónGET/elegiblescoordinadora, adminEstudiantes con curso completo sin diploma aúnPOST/:userId/generarcoordinadora, adminGenera PDF + código, sube a CloudinaryGET/verificar/:codigopúblicoVerificación pública del diploma
+
+Uploads (/api/uploads)
+
+MétodoRutaRolDescripciónPOST/imagencoordinadora, adminmultipart/form-data, campo imagen → { url }
+
+Noticias (/api/noticias)
+
+MétodoRutaRolDescripciónGET/públicoTodas, con autor y comentarios pobladosGET/:idpúblicoDetallePOST/coordinadora, admin{ titulo, contenido, imagenUrl?, videoEmbedUrl? }PATCH/:idcoordinadora, adminEditarDELETE/:idcoordinadora, adminEliminarPOST/:id/likecualquier autenticadaTogglePOST/:id/comentarioscualquier autenticada{ texto }, se publica directoDELETE/:id/comentarios/:comentarioIdcoordinadora, adminEliminar comentario
+
+Testimonios (/api/testimonios)
+
+MétodoRutaRolDescripciónGET/públicoSolo activosGET/admincoordinadora, adminTodos (incluye inactivos)POST /, PATCH /:id, DELETE /:idcoordinadora, adminCRUD
+
+FAQ (/api/faqs) — mismo patrón que Testimonios
+
+Contabilidad (/api/contabilidad) — todo exclusivo de admin
+
+MétodoRutaDescripciónPOST/movimientos{ tipo, categoria, monto, descripcion?, fecha? }GET/movimientos?mes=&anio=&tipo=&categoria=Listar/filtrarPOST/balances/generar{ mes, anio } → recalcula, genera PDF, guarda (upsert por mes/año)GET/balancesHistorial completoGET/balances/:idUn balance específico
+
+Reglas de negocio ya implementadas (no reinventar en el frontend)
+
+Orden estricto de sesiones: no se puede desbloquear la sesión N+2 sin haber
+desbloqueado la N+1 primero.
+Máximo 3 intentos por sesión; el backend lo rechaza automáticamente al 4to.
+Nota mínima 70% para aprobar (calculado en el backend, no confiar en el frontend).
+Diploma requiere ProgresoEstudiante.cursoCompletado === true (las 3 aprobadas).
+Un pago confirmado genera automáticamente un MovimientoContable de tipo
+entrada/categoría inscripcion — el frontend de contabilidad no debe
+duplicar esto manualmente.
+Los balances mensuales son "upsert": generar de nuevo el mismo mes/año lo
+reemplaza (útil si se corrige un movimiento a posteriori).
+
+Pendiente de implementar (NO existe todavía)
+
+Recuperación de contraseña ("olvidé mi contraseña").
+Paginación real en listados largos (noticias, movimientos) — hoy se listan
+todos sin límite salvo /api/usuarios que sí tiene límite de 50.
+Notificaciones (email/SMS) de ningún tipo.
+Contenido teórico real de las 3 sesiones (Ley 63-17 y buenas prácticas) —
+hoy son placeholders, se editan con PATCH /api/sesiones/:numero.
+
+Testing
+
+Antes de cualquier cambio importante: npm run dev local + probar con curl o
+Postman los endpoints tocados. El flujo completo (registro → inscripción → pago
+→ 3 sesiones → diploma → verificación) ya fue probado end-to-end exitosamente.

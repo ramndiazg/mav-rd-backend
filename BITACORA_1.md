@@ -260,3 +260,98 @@ pasar a producción.
 - [ ] Módulo de FAQ (CRUD desde panel de coordinadora)
 - [ ] Módulo de Contabilidad (movimientos, balances mensuales automáticos + PDF)
 - [ ] Backend queda completo después de estos 3 módulos — arrancar frontend
+
+Sesión 6 — 04/07/2026 — Backend COMPLETO + preparación para frontend
+
+Se hizo:
+
+Módulo de Testimonios y FAQ (CRUD, patrón idéntico entre sí).
+Módulo de Contabilidad: movimientos, balances mensuales (con PDF vía
+Cloudinary), y conexión automática pago-confirmado → movimiento contable.
+Módulo de Usuarios (nuevo, cerraba un vacío funcional):
+GET /api/usuarios (búsqueda por rol/nombre/cédula/email — necesario para que
+la coordinadora encuentre estudiantes al inscribir/generar diplomas),
+POST /api/usuarios/coordinadora (admin crea cuentas de coordinadora sin
+tener que hacerlo a mano en Atlas), PATCH /:id/estado y PATCH /:id/rol.
+Backend queda en 9 módulos completos: auth, usuarios, configuración,
+inscripciones, sesiones/exámenes/intentos/progreso, diplomas, uploads,
+noticias, testimonios, FAQ, contabilidad. 52 archivos fuente, todos
+verificados por sintaxis y resolución de imports.
+Documentación regenerada para reflejar el estado REAL (no el plan inicial):
+BACKEND_ACTUALIZADO.md (reemplaza a Arquitectura_Backend.md como fuente
+de verdad) y FRONTEND_CORRECCION_AUTH.md (corrige un error de diseño en
+Arquitectura_Frontend.md: el backend NO usa cookies, usa Bearer token).
+
+IMPORTANTE — corrección de arquitectura antes de tocar el frontend:
+El documento original de frontend asumía JWT en cookie httpOnly + middleware
+de Next.js. Eso no se implementó así. El backend real devuelve el token en el
+body y espera Authorization: Bearer <token>. Ver FRONTEND_CORRECCION_AUTH.md
+para la estrategia correcta (Context + localStorage + componente de ruta
+protegida en cliente, no middleware de servidor).
+
+Estado de las pruebas manuales (con curl) — todas exitosas:
+
+Ciclo completo estudiante: registro → inscripción → confirmación de pago →
+3 sesiones desbloqueadas y aprobadas → diploma generado con PDF real en
+Cloudinary → verificación pública del código. ✅
+Permisos por rol (admin/coordinadora/estudiante) rechazando correctamente
+accesos indebidos. ✅
+Noticias: creación confirmada. Testimonios/FAQ: no probados por curl pero
+siguen el mismo patrón ya validado en otros módulos — probar con el frontend.
+Contabilidad: probado movimiento manual + balance generado correctamente.
+Pendiente de confirmar: que el movimiento automático se dispare al
+confirmar un pago NUEVO (el primero que probamos fue anterior a que existiera
+esa lógica, por eso no apareció en el balance — no es un bug, es orden
+cronológico de cuándo se escribió el código).
+Usuarios (nuevo): no probado aún, hacerlo apenas se retome el proyecto.
+
+Datos de prueba que existen en la base de datos Atlas (mav_rd) ahora mismo:
+
+maria@test.com / 12345678 — rol admin (cuenta de la fundadora de prueba)
+ana@test.com / 12345678 — rol coordinadora
+estudiante@test.com / 12345678 — rol estudiante, curso completo, diploma
+emitido (código MAV-2026-000001)
+3 sesiones creadas por el seed, con teoría placeholder (pendiente contenido real)
+3 exámenes de prueba (Sesión 1, 2 y 3), con preguntas ficticias "P1"—"P10"
+de una sola opción correcta (índice 0) — hay que borrar o reemplazar estos
+exámenes de prueba antes de producción, son solo para testing.
+1 noticia de prueba, 1 balance mensual de julio 2026 con datos parciales
+(afectado por el orden cronológico explicado arriba)
+
+Pendiente real para producción (no bloquea el inicio del frontend, pero no
+hay que olvidarlo):
+
+Contenido teórico real de las 3 sesiones (Ley 63-17 de Tránsito RD +
+buenas prácticas de conducción) — investigación pendiente
+Reemplazar exámenes de prueba por preguntas reales
+Rotar la contraseña del usuario de MongoDB Atlas antes de producción
+(el cluster es compartido con otra app del desarrollador)
+Recuperación de contraseña (no existe todavía)
+Logo oficial en alta resolución para ajustar la paleta de colores exacta
+Decidir montos reales de precio_plan_normal y precio_plan_vip
+
+🚀 CÓMO ARRANCAR LA SESIÓN DE FRONTEND (sin contexto de este chat)
+
+Si estás leyendo esto desde una conversación nueva sin el historial anterior,
+esto es lo que necesitas saber:
+
+Lee en este orden: este archivo completo → BACKEND_ACTUALIZADO.md →
+FRONTEND_CORRECCION_AUTH.md → DATABASE.md (esquema de datos) →
+Arquitectura_Frontend.md (estructura de páginas, ES el plan válido EXCEPTO
+la sección de autenticación, ya corregida en el archivo aparte).
+Stack confirmado: Next.js + Tailwind, desplegado en Vercel (gratis).
+Paleta de marca: azul #1B3A6B, rosa #D6336C (ver Arquitectura_Frontend.md
+para la paleta completa). Tipografía: Poppins (títulos) + Inter (cuerpo).
+El backend ya está desplegado? Verificar con la persona si el backend
+corre en local (http://localhost:4000) o si ya se desplegó a algún hosting
+gratuito (Render, Railway, Fly.io) — el proyecto no lo ha hecho todavía, así
+que probablemente haya que desplegarlo antes o en paralelo al frontend, o
+trabajar contra localhost:4000 mientras se desarrolla.
+Usar las cuentas de prueba de la tabla de arriba para probar cada rol.
+Repos: mav-rd-backend (todo el código + toda la documentación vive
+aquí) y mav-rd-frontend (solo el frontend). Ambos en GitHub, ya clonados
+localmente por la persona.
+Primera pregunta a hacerle a la persona al empezar: "¿el backend sigue
+corriendo igual que lo dejamos, o hiciste cambios? ¿quieres que empecemos
+por la página de Login+Registro, o prefieres el layout general (Navbar,
+Footer, Home) primero?" — no asumir, confirmar antes de generar código.

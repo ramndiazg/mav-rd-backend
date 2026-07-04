@@ -10,6 +10,10 @@ const progresoRoutes = require("./routes/progresoRoutes");
 const diplomaRoutes = require("./routes/diplomaRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
 const noticiaRoutes = require("./routes/noticiaRoutes");
+const testimonioRoutes = require("./routes/testimonioRoutes");
+const faqRoutes = require("./routes/faqRoutes");
+const contabilidadRoutes = require("./routes/contabilidadRoutes");
+const usuarioRoutes = require("./routes/usuarioRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -35,6 +39,10 @@ app.use("/api/progreso", progresoRoutes);
 app.use("/api/diplomas", diplomaRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/noticias", noticiaRoutes);
+app.use("/api/testimonios", testimonioRoutes);
+app.use("/api/faqs", faqRoutes);
+app.use("/api/contabilidad", contabilidadRoutes);
+app.use("/api/usuarios", usuarioRoutes);
 
 // Cualquier ruta no encontrada
 app.use((req, res) => {

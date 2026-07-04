@@ -1,5 +1,6 @@
 const Inscripcion = require("../models/Inscripcion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
+const MovimientoContable = require("../models/MovimientoContable");
 
 // POST /api/inscripciones — coordinadora/admin crea la inscripción de una estudiante
 async function crearInscripcion(req, res, next) {
@@ -69,6 +70,17 @@ async function confirmarPago(req, res, next) {
       { userId: inscripcion.userId },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );
+
+    // El pago confirmado se registra automáticamente como entrada contable
+    await MovimientoContable.create({
+      tipo: "entrada",
+      categoria: "inscripcion",
+      monto: inscripcion.monto,
+      descripcion: `Pago de inscripción (plan ${inscripcion.tipoPlan})`,
+      fecha: inscripcion.fechaPago,
+      inscripcionRelacionadaId: inscripcion._id,
+      registradoPor: req.usuario._id,
+    });
 
     res.json({ success: true, data: inscripcion });
   } catch (error) {
