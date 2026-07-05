@@ -66,6 +66,56 @@ async function registro(req, res, next) {
   }
 }
 
+// Agregar este require al inicio de authController.js si no existe ya:
+// const bcrypt = require("bcrypt"); // o "bcryptjs", según cuál uses en registro/login
+// const User = require("../models/User");
+
+// PATCH /api/auth/cambiar-password — cualquier usuaria autenticada
+async function cambiarPassword(req, res, next) {
+  try {
+    const { passwordActual, passwordNueva } = req.body;
+
+    if (!passwordActual || !passwordNueva) {
+      return res.status(400).json({
+        success: false,
+        error: "passwordActual y passwordNueva son obligatorios.",
+      });
+    }
+
+    if (passwordNueva.length < 8) {
+      return res.status(400).json({
+        success: false,
+        error: "La nueva contraseña debe tener al menos 8 caracteres.",
+      });
+    }
+
+    // req.usuario lo pone protegerRuta a partir del token — traemos el
+    // documento completo porque el que viene en req.usuario probablemente
+    // no incluye passwordHash (select: false es común en ese campo).
+    const usuario = await User.findById(req.usuario._id).select(
+      "+passwordHash",
+    );
+
+    const coincide = await bcrypt.compare(passwordActual, usuario.passwordHash);
+    if (!coincide) {
+      return res.status(401).json({
+        success: false,
+        error: "La contraseña actual no es correcta.",
+      });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    usuario.passwordHash = await bcrypt.hash(passwordNueva, salt);
+    await usuario.save();
+
+    res.json({ success: true, data: { mensaje: "Contraseña actualizada." } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Agregar cambiarPassword al module.exports existente, junto a registro/login/perfil
+
 // POST /api/auth/login
 async function login(req, res, next) {
   try {
@@ -119,4 +169,4 @@ async function perfil(req, res) {
   res.json({ success: true, data: { usuario: req.usuario } });
 }
 
-module.exports = { registro, login, perfil };
+module.exports = { registro, login, perfil, cambiarPassword };

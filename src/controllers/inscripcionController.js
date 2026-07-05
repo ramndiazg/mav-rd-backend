@@ -64,10 +64,20 @@ async function confirmarPago(req, res, next) {
     inscripcion.confirmadoPor = req.usuario._id;
     await inscripcion.save();
 
-    // Al confirmar el pago, se habilita el progreso de la estudiante en el Aula Virtual
+    // Al confirmar el pago, se habilita el progreso de la estudiante en el Aula Virtual.
+    // CORRECCIÓN: antes esto se creaba con sesionActualDesbloqueada en su default (0),
+    // lo que dejaba a la estudiante sin poder ver ni la teoría de la Sesión 1
+    // (GET /api/sesiones/:numero exige numero <= sesionActualDesbloqueada).
+    // $setOnInsert asegura que esto SOLO pase la primera vez (si ya existe un
+    // progreso previo — por ejemplo, una recompra — no se pisa su avance real).
     await ProgresoEstudiante.findOneAndUpdate(
       { userId: inscripcion.userId },
-      { userId: inscripcion.userId },
+      {
+        $setOnInsert: {
+          userId: inscripcion.userId,
+          sesionActualDesbloqueada: 1,
+        },
+      },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );
 
@@ -105,4 +115,23 @@ async function listarInscripciones(req, res, next) {
   }
 }
 
-module.exports = { crearInscripcion, confirmarPago, listarInscripciones };
+// GET /api/inscripciones/me — NUEVO: la estudiante ve su propio estado de pago
+async function obtenerMiInscripcion(req, res, next) {
+  try {
+    const inscripcion = await Inscripcion.findOne({
+      userId: req.usuario._id,
+    }).sort({ createdAt: -1 });
+
+    // null es una respuesta válida: significa "todavía no te has inscrito"
+    res.json({ success: true, data: inscripcion });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = {
+  crearInscripcion,
+  confirmarPago,
+  listarInscripciones,
+  obtenerMiInscripcion,
+};

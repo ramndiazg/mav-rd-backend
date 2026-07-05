@@ -14,6 +14,7 @@ const testimonioRoutes = require("./routes/testimonioRoutes");
 const faqRoutes = require("./routes/faqRoutes");
 const contabilidadRoutes = require("./routes/contabilidadRoutes");
 const usuarioRoutes = require("./routes/usuarioRoutes");
+const contenidoRoutes = require("./routes/contenido");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -59,6 +60,7 @@ app.use("/api/testimonios", testimonioRoutes);
 app.use("/api/faqs", faqRoutes);
 app.use("/api/contabilidad", contabilidadRoutes);
 app.use("/api/usuarios", usuarioRoutes);
+app.use("/api/contenido", contenidoRoutes);
 
 // Cualquier ruta no encontrada
 app.use((req, res) => {

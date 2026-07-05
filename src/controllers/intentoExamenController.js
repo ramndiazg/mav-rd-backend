@@ -2,6 +2,34 @@ const IntentoExamen = require("../models/IntentoExamen");
 const Sesion = require("../models/Sesion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 
+// GET /api/intentos-examen/activo/:sesionId — NUEVO
+// La estudiante no tenía forma de saber el id de su propio IntentoExamen
+// (lo crea la coordinadora al desbloquear). Este endpoint devuelve el intento
+// sin entregar más reciente de esa sesión, o 404 si no hay ninguno pendiente.
+async function obtenerIntentoActivo(req, res, next) {
+  try {
+    const { sesionId } = req.params;
+
+    const intento = await IntentoExamen.findOne({
+      userId: req.usuario._id,
+      sesionId,
+      fechaFin: null,
+    }).sort({ createdAt: -1 });
+
+    if (!intento) {
+      return res.status(404).json({
+        success: false,
+        error:
+          "No tienes un examen pendiente para esta sesión. Pide a tu coordinadora que lo desbloquee.",
+      });
+    }
+
+    res.json({ success: true, data: intento });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // POST /api/intentos-examen/:id/iniciar — estudiante inicia su intento (arranca el timer)
 async function iniciarIntento(req, res, next) {
   try {
@@ -130,4 +158,4 @@ async function entregarIntento(req, res, next) {
   }
 }
 
-module.exports = { iniciarIntento, entregarIntento };
+module.exports = { obtenerIntentoActivo, iniciarIntento, entregarIntento };
