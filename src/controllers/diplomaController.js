@@ -32,6 +32,24 @@ async function listarElegibles(req, res, next) {
   }
 }
 
+// GET /api/diplomas/me — NUEVO: la estudiante ve su propio diploma
+async function obtenerMiDiploma(req, res, next) {
+  try {
+    const diploma = await Diploma.findOne({ userId: req.usuario._id });
+
+    if (!diploma) {
+      return res.status(404).json({
+        success: false,
+        error: "Todavía no tienes un diploma generado.",
+      });
+    }
+
+    res.json({ success: true, data: diploma });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // POST /api/diplomas/:userId/generar — coordinadora/admin genera el diploma
 async function generarDiploma(req, res, next) {
   try {
@@ -122,4 +140,9 @@ async function verificarDiploma(req, res, next) {
   }
 }
 
-module.exports = { listarElegibles, generarDiploma, verificarDiploma };
+module.exports = {
+  listarElegibles,
+  generarDiploma,
+  verificarDiploma,
+  obtenerMiDiploma,
+};
