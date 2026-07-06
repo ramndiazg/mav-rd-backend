@@ -65,9 +65,9 @@ Auth (/api/auth)
 
 MétodoRutaRolDescripciónPOST/registropúblicoCrea cuenta de estudiantePOST/loginpúblicoDevuelve { usuario, token }GET/perfilautenticadaDatos del usuario del token actualPATCH/cambiar-passwordautenticadaBody { passwordActual, passwordNueva }
 
-⚠️ "Olvidé mi contraseña" (sin sesión iniciada) sigue sin existir — requiere
-servicio de email y queda fuera del alcance actual. cambiar-password es
-distinto: solo sirve si la usuaria ya puede loguearse.
+> ⚠️ "Olvidé mi contraseña" (sin sesión iniciada) sigue sin existir — requiere
+> servicio de email y queda fuera del alcance actual. `cambiar-password` es
+> distinto: solo sirve si la usuaria ya puede loguearse.
 
 Usuarios (/api/usuarios)
 
@@ -81,11 +81,11 @@ Inscripciones (/api/inscripciones)
 
 MétodoRutaRolDescripciónPOST/coordinadora, adminBody { userId, tipoPlan: 'normal'|'vip', monto }GET/?estadoPago=coordinadora, adminListar (con datos de la estudiante poblados)GET/meestudianteSu propia inscripción (o null si no se ha inscrito) — así el dashboard sabe su estado de pago sin inferir nadaPATCH/:id/confirmar-pagocoordinadora, adminMarca pagado, crea ProgresoEstudiante y un MovimientoContable automático
 
-Regla formal (antes era un supuesto sin confirmar): al confirmar el pago,
-el ProgresoEstudiante que se crea DEBE inicializar sesionActualDesbloqueada: 1.
-Si se crea en 0, la estudiante paga y no puede ver ni la teoría de la
-Sesión 1 (GET /api/sesiones/:numero exige numero <= sesionActualDesbloqueada).
-Verificar esto en el código existente antes de dar por hecho que ya funciona así.
+> **Regla formal (antes era un supuesto sin confirmar):** al confirmar el pago,
+> el `ProgresoEstudiante` que se crea DEBE inicializar `sesionActualDesbloqueada: 1`.
+> Si se crea en `0`, la estudiante paga y no puede ver ni la teoría de la
+> Sesión 1 (`GET /api/sesiones/:numero` exige `numero <= sesionActualDesbloqueada`).
+> Verificar esto en el código existente antes de dar por hecho que ya funciona así.
 
 Sesiones (/api/sesiones)
 
@@ -93,22 +93,22 @@ MétodoRutaRolDescripciónGET/coordinadora, adminLas 3 sesiones completas (gesti
 
 Exámenes (/api/examenes) — banco de preguntas por sesión
 
-MétodoRutaRolDescripciónPOST/coordinadora, adminCrear versión: { sesionId, nombreVersion, preguntas: [10 exactas] }GET/sesion/:sesionIdcoordinadora, adminVersiones disponibles de esa sesión (para mantenimiento del banco)PATCH/:idcoordinadora, adminEditar preguntas/opciones/respuesta correcta de una versión existente (ej. si cambia la Ley 63-17)DELETE/:idadminBorrado lógico (activo: false), NUNCA borrado físico — los IntentoExamen históricos siguen referenciando ese examenIdPOST/:sesionId/desbloquearcoordinadora, adminBody { userId } → el backend elige al azar una versión activa entre las de esa sesión, crea el IntentoExamen, valida orden y límite de 3 intentos
+MétodoRutaRolDescripciónPOST/coordinadora, adminCrear versión: { sesionId, nombreVersion, preguntas: [10 exactas] }GET/sesion/:sesionIdcoordinadora, adminVersiones disponibles de esa sesión (para mantenimiento del banco)PATCH/:idcoordinadora, adminEditar preguntas/opciones/respuesta correcta de una versión existente (ej. si cambia la Ley 63-17)DELETE/:idadminBorrado lógico (`activo: false`), NUNCA borrado físico — los `IntentoExamen` históricos siguen referenciando ese `examenId`POST/:sesionId/desbloquearcoordinadora, adminBody { userId } → **el backend elige al azar** una versión activa entre las de esa sesión, crea el IntentoExamen, valida orden y límite de 3 intentos
 
-Cambio de diseño respecto a la versión anterior: antes la coordinadora
-elegía manualmente examenId al desbloquear. Ahora la ruta recibe sesionId
-y el backend asigna al azar una versión activa. Esto resuelve la ambigüedad
-de "¿quién elige la versión?" — la coordinadora solo decide cuándo
-desbloquear, no cuál versión le toca a cada estudiante. La fundadora (admin)
-mantiene el banco de preguntas actualizado con PATCH/DELETE cuando cambie la ley.
+> **Cambio de diseño respecto a la versión anterior:** antes la coordinadora
+> elegía manualmente `examenId` al desbloquear. Ahora la ruta recibe `sesionId`
+> y el backend asigna al azar una versión activa. Esto resuelve la ambigüedad
+> de "¿quién elige la versión?" — la coordinadora solo decide _cuándo_
+> desbloquear, no _cuál_ versión le toca a cada estudiante. La fundadora (admin)
+> mantiene el banco de preguntas actualizado con PATCH/DELETE cuando cambie la ley.
 
 Intentos de examen (/api/intentos-examen) — todo estudiante (dueña del intento)
 
-MétodoRutaDescripciónGET/activo/:sesionIdDevuelve el intento sin entregar (fechaFin: null) más reciente de la estudiante para esa sesión — así el frontend obtiene el id que necesita para iniciar/entregar. 404 si no hay ninguno pendientePOST/:id/iniciarArranca el timer, devuelve preguntas SIN respuesta correctaPOST/:id/entregarBody { respuestas: [10 índices] } → califica (≥70% aprueba)
+MétodoRutaDescripciónGET/activo/:sesionIdDevuelve el intento sin entregar (`fechaFin: null`) más reciente de la estudiante para esa sesión — así el frontend obtiene el `id` que necesita para iniciar/entregar. 404 si no hay ninguno pendientePOST/:id/iniciarArranca el timer, devuelve preguntas SIN respuesta correctaPOST/:id/entregarBody { respuestas: [10 índices] } → califica (≥70% aprueba)
 
-Este GET /activo/:sesionId es lo que cierra el vacío detectado antes de
-construir el Aula Virtual: sin él, la estudiante no tenía forma de saber el
-id de su propio intento.
+> Este `GET /activo/:sesionId` es lo que cierra el vacío detectado antes de
+> construir el Aula Virtual: sin él, la estudiante no tenía forma de saber el
+> `id` de su propio intento.
 
 Progreso (/api/progreso)
 
@@ -116,7 +116,7 @@ MétodoRutaRolDescripciónGET/meestudianteSu propio progresoGET/:userIdcoordinad
 
 Diplomas (/api/diplomas)
 
-MétodoRutaRolDescripciónGET/elegiblescoordinadora, adminEstudiantes con curso completo sin diploma aúnPOST/:userId/generarcoordinadora, adminGenera PDF + código, sube a CloudinaryGET/verificar/:codigopúblicoVerificación pública del diploma
+MétodoRutaRolDescripciónGET/meestudianteSu propio diploma (404 si todavía no se ha generado)GET/elegiblescoordinadora, adminEstudiantes con curso completo sin diploma aúnPOST/:userId/generarcoordinadora, adminGenera PDF + código, sube a CloudinaryGET/verificar/:codigopúblicoVerificación pública del diploma
 
 Uploads (/api/uploads)
 
@@ -140,14 +140,14 @@ esto la fundadora edita el contenido de la página sin depender de un despliegue
 
 MétodoRutaRolDescripciónGET/públicoTodos los bloques { clave, valor, tipo }GET/:clavepúblicoUn bloque específicoPOST/adminCrear un bloque nuevo { clave, valor, tipo } (para cuando se necesite uno que no existía)PATCH/:claveadminActualizar el valor de un bloque existente
 
-Claves iniciales sugeridas: inicio_hero_titulo, inicio_hero_texto,
-acerca_de_historia, acerca_de_fundadora, kit_video_urls (tipo json),
-kit_libro_url, kit_intrant_url, contacto_telefono, contacto_email,
-contacto_direccion, redes_facebook, redes_instagram, redes_whatsapp.
+Claves iniciales sugeridas: `inicio_hero_titulo`, `inicio_hero_texto`,
+`acerca_de_historia`, `acerca_de_fundadora`, `kit_video_urls` (tipo `json`),
+`kit_libro_url`, `kit_intrant_url`, `contacto_telefono`, `contacto_email`,
+`contacto_direccion`, `redes_facebook`, `redes_instagram`, `redes_whatsapp`.
 
-Noticias, testimonios, FAQ y comentarios ya tenían CRUD para coordinadora/admin
-— eso ya estaba bien resuelto. Lo que faltaba era el contenido estático de
-las páginas públicas, que es lo que resuelve este módulo nuevo.
+> Noticias, testimonios, FAQ y comentarios ya tenían CRUD para coordinadora/admin
+> — eso ya estaba bien resuelto. Lo que faltaba era el contenido _estático_ de
+> las páginas públicas, que es lo que resuelve este módulo nuevo.
 
 Contabilidad (/api/contabilidad) — todo exclusivo de admin
 
@@ -182,16 +182,16 @@ Correcciones de esta sesión de revisión (antes de continuar codeando)
 Estos son los puntos que se detectaron como vacíos de lógica o inconsistencias
 y quedaron resueltos en este mismo documento (ver secciones correspondientes):
 
-recuperación del id del IntentoExamen por la estudiante, 2) inicialización
-de sesionActualDesbloqueada al confirmar pago, 3) endpoint GET /inscripciones/me,
-asignación al azar de versión de examen + PATCH/DELETE para mantenerlas,
-endpoint de cambio de contraseña, 6) módulo de contenido de página editable,
-código de verificación de diploma con año dinámico (ver nota abajo).
+1. recuperación del id del IntentoExamen por la estudiante, 2) inicialización
+   de sesionActualDesbloqueada al confirmar pago, 3) endpoint GET /inscripciones/me,
+2. asignación al azar de versión de examen + PATCH/DELETE para mantenerlas,
+3. endpoint de cambio de contraseña, 6) módulo de contenido de página editable,
+4. código de verificación de diploma con año dinámico (ver nota abajo).
 
-Nota — código de verificación de diploma: verificationCode.js debe generar
-el año con new Date().getFullYear(), no con 2026 hardcodeado. Revisar el
+Nota — código de verificación de diploma: `verificationCode.js` debe generar
+el año con `new Date().getFullYear()`, no con `2026` hardcodeado. Revisar el
 archivo real y corregirlo si sigue fijo (los diplomas de prueba actuales usan
-MAV-2026-000001, lo cual es correcto solo porque coincide con el año real).
+`MAV-2026-000001`, lo cual es correcto solo porque coincide con el año real).
 
 Testing
 

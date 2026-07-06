@@ -403,8 +403,28 @@ undefined` al arrancar — corregido agregando `cambiarPassword` al export.
       usuarias reales nuevas)
 - [ ] Reemplazar exámenes de prueba por preguntas reales ahora que el banco
       soporta PATCH/DELETE
-- [ ] Retomar el Aula Virtual del frontend con el backend ya corregido —
-      próximo bloque de trabajo
+- [x] Retomar el Aula Virtual del frontend con el backend ya corregido —
+      hecho, ver `BITACORA_FRONTEND.md` Sesión 6
+
+### Sesión 8 — 06/07/2026 — Backend: endpoint de diploma propio de la estudiante
+
+Mientras se construía la página `app/(estudiante)/diploma/page.tsx` en el
+frontend, se detectó el mismo tipo de vacío que ya habíamos resuelto antes con
+`inscripciones/me`: los endpoints de diplomas (`GET /elegibles`,
+`POST /:userId/generar`, `GET /verificar/:codigo`) son todos para
+coordinadora/admin o público — no había forma de que la propia estudiante
+viera su diploma.
+
+**Se agregó:** `GET /api/diplomas/me` (estudiante) — devuelve su propio
+diploma, o 404 si todavía no se ha generado. Implementado, y el backend
+desplegó sin errores en Render tras el push.
+
+**Pendiente para más adelante:**
+
+- [ ] Probar el flujo completo diploma (coordinadora genera → estudiante lo
+      ve) con una cuenta que de verdad complete y apruebe las 3 sesiones desde
+      el navegador — no se alcanzó a hacer en esta sesión porque ninguna
+      cuenta de prueba tenía `cursoCompletado: true` todavía.
 
 ---
 
