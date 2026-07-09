@@ -428,6 +428,65 @@ desplegó sin errores en Render tras el push.
 
 ---
 
+### Sesión 9 — 07/07/2026 — Contenido de estudio + auto-desbloqueo de examen, y fix del diploma PDF
+
+**Contexto:** después de que el frontend construyera todo el panel de
+coordinadora/admin (Sesión 7/8 de frontend), surgieron 8 puntos de mejora al
+usar la app de verdad. Dos de ellos tocaron el backend a fondo.
+
+**1) Arquitectura nueva — contenido de estudio con auto-desbloqueo (decisión
+tomada con la persona, no asumida):** antes, el examen se desbloqueaba
+exclusivamente por acción manual de la coordinadora, sin relación con si la
+estudiante había estudiado algo. Se decidió que el examen debía desbloquearse
+**automáticamente** al terminar de consumir el contenido de estudio de la
+sesión. Esto requirió:
+
+- Modelo nuevo `ContenidoSesion` (materiales por sesión: video/pdf/enlace/texto).
+- `ProgresoEstudiante` gana `contenidosVistos: [ObjectId]`.
+- La lógica de desbloqueo de `examenController.js` se extrajo a una función
+  interna reutilizable, `intentarDesbloquear()` — no es un endpoint, es una
+  función de JS que llaman tres caminos distintos: el endpoint manual de la
+  coordinadora (que ahora es solo un override/excepción, ya no el camino
+  normal), el auto-disparo desde `POST /api/contenido-sesion/:id/marcar-visto`
+  cuando la estudiante termina todo el contenido, y el nuevo endpoint de
+  autoservicio `POST /api/intentos-examen/reintentar/:sesionId` (para que la
+  estudiante pida otro intento después de reprobar sin depender de la
+  coordinadora, ya que el contenido no hay que volver a verlo).
+- Nuevos endpoints: `GET/POST/PATCH/DELETE /api/contenido-sesion` (CRUD,
+  coordinadora/admin), `POST /:id/marcar-visto` (estudiante),
+  `GET /api/intentos-examen/historial/:sesionId` (estudiante, para saber si
+  mostrar el botón de reintento), `GET /api/intentos-examen/estudiante/:userId`
+  (coordinadora/admin, para el panel "Estudiantes" del frontend).
+- `routes/intentosExamen.js` se reestructuró: ya no es 100% estudiante, ahora
+  mezcla roles por ruta (como ya se había hecho antes con `inscripciones.js`).
+
+**2) Bug corregido — diploma se descargaba como archivo genérico, no `.pdf`:**
+la causa estaba en `utils/cloudinaryUpload.js`, no en `pdfGenerator.js` (que
+genera un PDF válido sin problema). El `public_id` se mandaba sin extensión
+(`diploma-MAV-2026-000123` en vez de `...pdf`), así que la URL final de
+Cloudinary tampoco la tenía y el navegador no reconocía el tipo de archivo al
+descargar. `subirBuffer()` ahora agrega la extensión automáticamente cuando
+`resourceType` es `raw` y el nombre no trae una ya.
+
+**⚠️ Pendiente real:** el diploma de prueba generado _antes_ de este fix quedó
+mal guardado en Cloudinary — hay que borrar ese documento `Diploma` en Atlas
+y regenerarlo para esa estudiante en particular. No se corrige solo.
+
+**Implementado, y confirmado funcionando por la persona** (contenido +
+auto-desbloqueo probado en el navegador de punta a punta).
+
+**Pendiente para más adelante:**
+
+- [ ] Regenerar el diploma de prueba que quedó mal con el bug viejo
+- [ ] Conectar `kit-preparacion/page.tsx` y `contacto` (si existe como página
+      separada) a `contenidoPagina`, igual que ya se hizo con Inicio y
+      Acerca de Nosotros
+- [ ] `admin/contabilidad/page.tsx` ya se construyó del lado de frontend en
+      paralelo a esta sesión — confirmar que los endpoints de `/api/contabilidad`
+      siguen sin cambios (no se tocaron en esta sesión)
+
+---
+
 🚀 CÓMO ARRANCAR LA SESIÓN DE FRONTEND (sin contexto de este chat)
 
 Si estás leyendo esto desde una conversación nueva sin el historial anterior,

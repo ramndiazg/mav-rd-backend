@@ -1,5 +1,6 @@
 const Diploma = require("../models/Diploma");
 const User = require("../models/User");
+const Sesion = require("../models/Sesion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const { generarDiplomaPDF } = require("../utils/pdfGenerator");
 const { generarCodigoVerificacion } = require("../utils/verificationCode");
@@ -27,24 +28,6 @@ async function listarElegibles(req, res, next) {
     );
 
     res.json({ success: true, data: estudiantes });
-  } catch (error) {
-    next(error);
-  }
-}
-
-// GET /api/diplomas/me — NUEVO: la estudiante ve su propio diploma
-async function obtenerMiDiploma(req, res, next) {
-  try {
-    const diploma = await Diploma.findOne({ userId: req.usuario._id });
-
-    if (!diploma) {
-      return res.status(404).json({
-        success: false,
-        error: "Todavía no tienes un diploma generado.",
-      });
-    }
-
-    res.json({ success: true, data: diploma });
   } catch (error) {
     next(error);
   }
@@ -79,6 +62,14 @@ async function generarDiploma(req, res, next) {
         .json({ success: false, error: "Estudiante no encontrada." });
     }
 
+    // NUEVO: se traen los títulos reales de las sesiones aprobadas para que
+    // el diploma las liste por nombre, en vez de solo una frase genérica.
+    const sesiones = await Sesion.find({
+      numero: { $in: progreso.sesionesAprobadas },
+    })
+      .select("numero titulo")
+      .lean();
+
     const codigoVerificacion = await generarCodigoVerificacion();
     const fechaEmision = new Date();
 
@@ -87,6 +78,7 @@ async function generarDiploma(req, res, next) {
       cedula: estudiante.cedula,
       fechaEmision,
       codigoVerificacion,
+      sesiones,
     });
 
     const resultadoSubida = await subirBuffer(pdfBuffer, {
@@ -135,6 +127,24 @@ async function verificarDiploma(req, res, next) {
         codigoVerificacion: diploma.codigoVerificacion,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/diplomas/me — la estudiante ve su propio diploma
+async function obtenerMiDiploma(req, res, next) {
+  try {
+    const diploma = await Diploma.findOne({ userId: req.usuario._id });
+
+    if (!diploma) {
+      return res.status(404).json({
+        success: false,
+        error: "Todavía no tienes un diploma generado.",
+      });
+    }
+
+    res.json({ success: true, data: diploma });
   } catch (error) {
     next(error);
   }

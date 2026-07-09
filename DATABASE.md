@@ -131,6 +131,7 @@ Estado consolidado de avance (evita recalcular todo desde `intentosExamen` en ca
   sesionActualDesbloqueada: Number, // 0 = ninguna, 1, 2 o 3
   sesionesAprobadas: [Number],   // ej: [1, 2]
   cursoCompletado: Boolean,      // true cuando aprueba las 3
+  contenidosVistos: [ObjectId],  // NUEVO — refs a contenidoSesion ya vistos
   updatedAt: Date
 }
 ```
@@ -138,6 +139,32 @@ Estado consolidado de avance (evita recalcular todo desde `intentosExamen` en ca
 > **Regla obligatoria:** al crearse este documento (dentro de
 > `confirmar-pago`), `sesionActualDesbloqueada` debe inicializarse en `1`, no en
 > `0`. En `0` la estudiante paga y no puede ver ni la teoría de la Sesión 1.
+
+> **NUEVO:** `contenidosVistos` es lo que dispara el desbloqueo automático del
+> examen. Cuando todos los `contenidoSesion` activos de una sesión están en
+> este arreglo, el backend desbloquea el examen de esa sesión sin que la
+> coordinadora tenga que hacer nada (ver `Arquitectura_Backend.md`,
+> módulo `contenidoSesion`).
+
+## 7.1 `contenidoSesion` (NUEVO)
+
+Los materiales de estudio (video, PDF, enlace o texto) que la estudiante
+consume antes de que el examen de esa sesión se habilite.
+
+```js
+{
+  _id: ObjectId,
+  sesionId: ObjectId,       // ref: sesiones
+  titulo: String,
+  tipo: String,             // enum: 'video' | 'pdf' | 'enlace' | 'texto'
+  url: String,              // para video (embed de YouTube), pdf o enlace
+  contenidoTexto: String,   // para tipo 'texto' (HTML/Markdown corto)
+  orden: Number,            // default 0, controla el orden de aparición
+  activo: Boolean,          // default true, borrado lógico
+  createdAt: Date,
+  updatedAt: Date
+}
+```
 
 ## 8. `diplomas`
 
@@ -270,6 +297,7 @@ Nosotros, Kit de Preparación, Contacto/redes) sin depender de un despliegue.
 - `diplomas`: índice único en `codigoVerificacion`.
 - `movimientosContables`: índice en `{ fecha }` (para agregaciones mensuales rápidas).
 - `contenidoPagina`: índice único en `clave`.
+- `contenidoSesion`: índice en `{ sesionId, activo }` (se filtra por ambos en cada consulta).
 
 ## Notas de diseño
 

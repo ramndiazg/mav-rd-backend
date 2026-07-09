@@ -93,18 +93,41 @@ MétodoRutaRolDescripciónGET/coordinadora, adminLas 3 sesiones completas (gesti
 
 Exámenes (/api/examenes) — banco de preguntas por sesión
 
-MétodoRutaRolDescripciónPOST/coordinadora, adminCrear versión: { sesionId, nombreVersion, preguntas: [10 exactas] }GET/sesion/:sesionIdcoordinadora, adminVersiones disponibles de esa sesión (para mantenimiento del banco)PATCH/:idcoordinadora, adminEditar preguntas/opciones/respuesta correcta de una versión existente (ej. si cambia la Ley 63-17)DELETE/:idadminBorrado lógico (`activo: false`), NUNCA borrado físico — los `IntentoExamen` históricos siguen referenciando ese `examenId`POST/:sesionId/desbloquearcoordinadora, adminBody { userId } → **el backend elige al azar** una versión activa entre las de esa sesión, crea el IntentoExamen, valida orden y límite de 3 intentos
+MétodoRutaRolDescripciónPOST/coordinadora, adminCrear versión: { sesionId, nombreVersion, preguntas: [10 exactas] }GET/sesion/:sesionIdcoordinadora, adminVersiones disponibles de esa sesión (para mantenimiento del banco)PATCH/:idcoordinadora, adminEditar preguntas/opciones/respuesta correcta de una versión existente (ej. si cambia la Ley 63-17)DELETE/:idadminBorrado lógico (`activo: false`), NUNCA borrado físico — los `IntentoExamen` históricos siguen referenciando ese `examenId`POST/:sesionId/desbloquearcoordinadora, admin**Override manual** — ver nota abajo, ya no es el camino normal
 
 > **Cambio de diseño respecto a la versión anterior:** antes la coordinadora
 > elegía manualmente `examenId` al desbloquear. Ahora la ruta recibe `sesionId`
-> y el backend asigna al azar una versión activa. Esto resuelve la ambigüedad
-> de "¿quién elige la versión?" — la coordinadora solo decide _cuándo_
-> desbloquear, no _cuál_ versión le toca a cada estudiante. La fundadora (admin)
+> y el backend asigna al azar una versión activa. La fundadora (admin)
 > mantiene el banco de preguntas actualizado con PATCH/DELETE cuando cambie la ley.
 
-Intentos de examen (/api/intentos-examen) — todo estudiante (dueña del intento)
+> **Cambio de diseño más grande (posterior):** el desbloqueo del examen dejó
+> de ser manual como camino normal. Ahora es **automático**: cuando la
+> estudiante marca como visto el último material de `contenidoSesion` de una
+> sesión, el backend desbloquea el examen solo (ver módulo `contenidoSesion`
+> abajo). `POST /:sesionId/desbloquear` sigue existiendo pero es una
+> **excepción/override** para la coordinadora — casos donde se necesita
+> forzar el desbloqueo sin pasar por el contenido.
+>
+> La lógica real de desbloqueo (orden estricto, límite de 3 intentos, azar de
+> versión, no duplicar si ya hay un intento activo) vive en una función
+> interna reutilizable, `intentarDesbloquear()`, en `examenController.js` —
+> la usan tres caminos distintos: este endpoint manual, el auto-desbloqueo de
+> `contenidoSesion`, y el reintento de autoservicio de la estudiante (ver
+> abajo). No es un endpoint propio, es una función de JS que cualquier
+> controller puede importar y llamar directamente.
 
-MétodoRutaDescripciónGET/activo/:sesionIdDevuelve el intento sin entregar (`fechaFin: null`) más reciente de la estudiante para esa sesión — así el frontend obtiene el `id` que necesita para iniciar/entregar. 404 si no hay ninguno pendientePOST/:id/iniciarArranca el timer, devuelve preguntas SIN respuesta correctaPOST/:id/entregarBody { respuestas: [10 índices] } → califica (≥70% aprueba)
+Contenido de Estudio por Sesión (/api/contenido-sesion) — NUEVO
+
+Los materiales que la estudiante consume antes de que el examen se habilite.
+Reemplaza la idea original de que el examen se desbloqueaba puramente por
+acción manual de la coordinadora — ahora el consumo de contenido es lo que
+dispara el desbloqueo.
+
+MétodoRutaRolDescripciónGET/sesion/:sesionIdestudiante, coordinadora, adminMateriales activos de una sesión (lo que ve la estudiante para estudiar)GET/admin/sesion/:sesionIdcoordinadora, adminTodos los materiales de una sesión, incluidos inactivos (gestión)POST/coordinadora, adminCrear material: { sesionId, titulo, tipo: 'video'\|'pdf'\|'enlace'\|'texto', url?, contenidoTexto?, orden? }PATCH/:idcoordinadora, adminEditar un materialDELETE/:idadminBorrado lógico (`activo: false`)POST/:id/marcar-vistoestudianteMarca un material como visto. **Si con este ya vio TODOS los materiales activos de la sesión, dispara `intentarDesbloquear()` automáticamente** — sin que la coordinadora haga nada. Responde `{ contenidoId, examenDesbloqueado: bool }`
+
+Intentos de examen (/api/intentos-examen)
+
+MétodoRutaRolDescripciónGET/activo/:sesionIdestudianteDevuelve el intento sin entregar (`fechaFin: null`) más reciente de la estudiante para esa sesión — así el frontend obtiene el `id` que necesita para iniciar/entregar. 404 si no hay ninguno pendienteGET/historial/:sesionIdestudianteTodos sus intentos (entregados o no) de esa sesión — para que el frontend sepa si mostrar el botón de reintentoPOST/reintentar/:sesionIdestudiante**NUEVO** — autoservicio: si reprobó y le quedan intentos, la propia estudiante pide otro intento sin pasar por la coordinadora (ya vio el contenido la primera vez, no tiene sentido pedírselo de nuevo). Usa la misma `intentarDesbloquear()` internaPOST/:id/iniciarestudianteArranca el timer, devuelve preguntas SIN respuesta correctaPOST/:id/entregarestudianteBody { respuestas: [10 índices] } → califica (≥70% aprueba)GET/estudiante/:userIdcoordinadora, admin**NUEVO** — todos los intentos de una estudiante en todas las sesiones (con `sesionId` poblado), para el panel "Estudiantes"
 
 > Este `GET /activo/:sesionId` es lo que cierra el vacío detectado antes de
 > construir el Aula Virtual: sin él, la estudiante no tenía forma de saber el
@@ -114,9 +137,22 @@ Progreso (/api/progreso)
 
 MétodoRutaRolDescripciónGET/meestudianteSu propio progresoGET/:userIdcoordinadora, adminProgreso de una estudiante
 
+> `ProgresoEstudiante` ahora también guarda `contenidosVistos` (array de ids
+> de `ContenidoSesion` ya vistos) — ver `DATABASE.md`.
+
 Diplomas (/api/diplomas)
 
 MétodoRutaRolDescripciónGET/meestudianteSu propio diploma (404 si todavía no se ha generado)GET/elegiblescoordinadora, adminEstudiantes con curso completo sin diploma aúnPOST/:userId/generarcoordinadora, adminGenera PDF + código, sube a CloudinaryGET/verificar/:codigopúblicoVerificación pública del diploma
+
+> **Bug corregido:** el diploma se descargaba como un archivo genérico
+> ("file") en vez de `.pdf`. La causa estaba en `utils/cloudinaryUpload.js`:
+> el `public_id` se mandaba sin extensión (`diploma-MAV-2026-000123` en vez
+> de `...pdf`), así que la URL final de Cloudinary tampoco la tenía y el
+> navegador no reconocía el tipo de archivo al descargar. Corregido para que
+> `subirBuffer()` agregue automáticamente la extensión cuando el
+> `resourceType` es `raw` y el nombre no trae una. Los diplomas generados
+> _antes_ de este fix quedaron mal en Cloudinary y hay que regenerarlos
+> (borrar el documento `Diploma` viejo en Atlas y generar de nuevo).
 
 Uploads (/api/uploads)
 
@@ -165,6 +201,10 @@ entrada/categoría inscripcion — el frontend de contabilidad no debe
 duplicar esto manualmente.
 Los balances mensuales son "upsert": generar de nuevo el mismo mes/año lo
 reemplaza (útil si se corrige un movimiento a posteriori).
+**NUEVO:** el examen se desbloquea automáticamente cuando la estudiante
+termina de ver todo el contenido activo de `contenidoSesion` de esa sesión —
+la coordinadora ya no tiene que desbloquearlo manualmente en el flujo normal
+(el endpoint manual sigue existiendo solo como excepción/override).
 
 Pendiente de implementar (NO existe todavía)
 
