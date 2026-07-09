@@ -1,11 +1,11 @@
 const IntentoExamen = require("../models/IntentoExamen");
 const Sesion = require("../models/Sesion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
+const { intentarDesbloquear } = require("./examenController");
 
-// GET /api/intentos-examen/activo/:sesionId — NUEVO
-// La estudiante no tenía forma de saber el id de su propio IntentoExamen
-// (lo crea la coordinadora al desbloquear). Este endpoint devuelve el intento
-// sin entregar más reciente de esa sesión, o 404 si no hay ninguno pendiente.
+// GET /api/intentos-examen/activo/:sesionId
+// Devuelve el intento sin entregar más reciente de la estudiante para esa
+// sesión, o 404 si no hay ninguno pendiente.
 async function obtenerIntentoActivo(req, res, next) {
   try {
     const { sesionId } = req.params;
@@ -20,11 +20,72 @@ async function obtenerIntentoActivo(req, res, next) {
       return res.status(404).json({
         success: false,
         error:
-          "No tienes un examen pendiente para esta sesión. Pide a tu coordinadora que lo desbloquee.",
+          "No tienes un examen pendiente para esta sesión. Termina de ver el contenido de estudio, o pide a tu coordinadora que lo habilite.",
       });
     }
 
     res.json({ success: true, data: intento });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/intentos-examen/estudiante/:userId — coordinadora/admin, NUEVO
+// Todos los intentos de una estudiante, en todas las sesiones — para la
+// pestaña "Estudiantes" del panel (ver si pagó, si aprobó, con qué nota).
+async function obtenerIntentosDeEstudiante(req, res, next) {
+  try {
+    const { userId } = req.params;
+
+    const intentos = await IntentoExamen.find({ userId })
+      .populate("sesionId", "numero titulo")
+      .sort({ createdAt: 1 });
+
+    res.json({ success: true, data: intentos });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/intentos-examen/historial/:sesionId — NUEVO
+// Todos los intentos (entregados o no) de la estudiante para esa sesión, para
+// que el frontend decida si mostrar "Reintentar examen" (reprobó y le quedan
+// intentos) sin tener que adivinar el estado.
+async function obtenerHistorial(req, res, next) {
+  try {
+    const { sesionId } = req.params;
+
+    const intentos = await IntentoExamen.find({
+      userId: req.usuario._id,
+      sesionId,
+    }).sort({ createdAt: 1 });
+
+    res.json({ success: true, data: intentos });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /api/intentos-examen/reintentar/:sesionId — NUEVO
+// Autoservicio: la estudiante ya vio el contenido en su primer intento, así
+// que no tiene sentido pedirle que lo vea de nuevo para reprobar/reintentar.
+async function reintentarExamen(req, res, next) {
+  try {
+    const { sesionId } = req.params;
+
+    const resultado = await intentarDesbloquear({
+      sesionId,
+      userId: req.usuario._id,
+      desbloqueadoPor: req.usuario._id, // se autodesbloquea
+    });
+
+    if (!resultado.ok) {
+      return res
+        .status(resultado.status)
+        .json({ success: false, error: resultado.error });
+    }
+
+    res.status(201).json({ success: true, data: resultado.intento });
   } catch (error) {
     next(error);
   }
@@ -58,7 +119,6 @@ async function iniciarIntento(req, res, next) {
     intento.fechaInicio = new Date();
     await intento.save();
 
-    // Se devuelven las preguntas SIN la respuesta correcta
     const preguntasSinRespuesta = intento.examenId.preguntas.map((p) => ({
       texto: p.texto,
       opciones: p.opciones,
@@ -81,7 +141,7 @@ async function iniciarIntento(req, res, next) {
 // POST /api/intentos-examen/:id/entregar — estudiante entrega respuestas
 async function entregarIntento(req, res, next) {
   try {
-    const { respuestas } = req.body; // array de índices elegidos
+    const { respuestas } = req.body;
 
     if (!Array.isArray(respuestas)) {
       return res
@@ -131,7 +191,6 @@ async function entregarIntento(req, res, next) {
     intento.fechaFin = new Date();
     await intento.save();
 
-    // Si aprobó, actualizar el progreso consolidado de la estudiante
     if (aprobado) {
       const progreso = await ProgresoEstudiante.findOne({
         userId: intento.userId,
@@ -158,4 +217,11 @@ async function entregarIntento(req, res, next) {
   }
 }
 
-module.exports = { obtenerIntentoActivo, iniciarIntento, entregarIntento };
+module.exports = {
+  obtenerIntentoActivo,
+  obtenerHistorial,
+  obtenerIntentosDeEstudiante,
+  reintentarExamen,
+  iniciarIntento,
+  entregarIntento,
+};

@@ -15,6 +15,7 @@ const faqRoutes = require("./routes/faqRoutes");
 const contabilidadRoutes = require("./routes/contabilidadRoutes");
 const usuarioRoutes = require("./routes/usuarioRoutes");
 const contenidoRoutes = require("./routes/contenido");
+const contenidoSesionRoutes = require("./routes/contenidoSesion");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -61,6 +62,7 @@ app.use("/api/faqs", faqRoutes);
 app.use("/api/contabilidad", contabilidadRoutes);
 app.use("/api/usuarios", usuarioRoutes);
 app.use("/api/contenido", contenidoRoutes);
+app.use("/api/contenido-sesion", contenidoSesionRoutes);
 
 // Cualquier ruta no encontrada
 app.use((req, res) => {

@@ -40,8 +40,7 @@ async function listarExamenesPorSesion(req, res, next) {
   }
 }
 
-// PATCH /api/examenes/:id — NUEVO: editar preguntas/opciones de una versión existente
-// Uso principal: la fundadora actualiza el banco cuando cambia la Ley 63-17.
+// PATCH /api/examenes/:id — editar preguntas/opciones de una versión existente
 async function editarExamen(req, res, next) {
   try {
     const { id } = req.params;
@@ -66,17 +65,13 @@ async function editarExamen(req, res, next) {
     }
 
     await examen.save();
-
-    // Nota: los IntentoExamen ya calificados que usaron esta versión no se ven
-    // afectados retroactivamente — su `respuestas`/`calificacion` quedan como
-    // se calcularon en su momento. Editar aquí solo afecta intentos futuros.
     res.json({ success: true, data: examen });
   } catch (error) {
     next(error);
   }
 }
 
-// DELETE /api/examenes/:id — NUEVO: borrado lógico (admin), nunca físico
+// DELETE /api/examenes/:id — borrado lógico (admin), nunca físico
 async function eliminarExamen(req, res, next) {
   try {
     const { id } = req.params;
@@ -88,8 +83,6 @@ async function eliminarExamen(req, res, next) {
         .json({ success: false, error: "Examen no encontrado." });
     }
 
-    // Borrado lógico: los IntentoExamen históricos siguen referenciando este
-    // examenId, así que borrarlo físicamente rompería ese historial.
     examen.activo = false;
     await examen.save();
 
@@ -99,8 +92,98 @@ async function eliminarExamen(req, res, next) {
   }
 }
 
-// POST /api/examenes/:sesionId/desbloquear — coordinadora desbloquea la SESIÓN
-// (ya no elige versión de examen manualmente — el backend la asigna al azar)
+/**
+ * Lógica compartida de desbloqueo — la usan tres caminos distintos:
+ * 1) La coordinadora, manualmente, desde el panel (excepción/override).
+ * 2) El sistema, automáticamente, cuando la estudiante termina de ver todo
+ *    el contenido de estudio de una sesión (ver contenidoSesionController.js).
+ * 3) La propia estudiante, con el botón de autoservicio "Reintentar examen"
+ *    después de reprobar (ver intentoExamenController.js).
+ *
+ * No es un handler de Express — no recibe req/res, así que se puede llamar
+ * desde cualquier controller. Devuelve { ok: true, intento } o
+ * { ok: false, status, error }.
+ */
+async function intentarDesbloquear({ sesionId, userId, desbloqueadoPor }) {
+  const sesion = await Sesion.findById(sesionId);
+  if (!sesion) {
+    return { ok: false, status: 404, error: "Sesión no encontrada." };
+  }
+
+  const progreso = await ProgresoEstudiante.findOne({ userId });
+  if (!progreso) {
+    return {
+      ok: false,
+      status: 404,
+      error:
+        "La estudiante no tiene un pago confirmado (no existe progreso registrado).",
+    };
+  }
+
+  // Orden estricto: solo se puede desbloquear la sesión siguiente a la ya
+  // desbloqueada, o repetir la sesión actual (reintento).
+  if (sesion.numero > progreso.sesionActualDesbloqueada + 1) {
+    return {
+      ok: false,
+      status: 400,
+      error: `La estudiante debe completar la Sesión ${progreso.sesionActualDesbloqueada} antes de avanzar a la Sesión ${sesion.numero}.`,
+    };
+  }
+
+  const intentosPrevios = await IntentoExamen.countDocuments({
+    userId,
+    sesionId: sesion._id,
+  });
+
+  if (intentosPrevios >= 3) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        "Esta estudiante ya agotó los 3 intentos permitidos para esta sesión.",
+    };
+  }
+
+  // Si ya existe un intento sin entregar para esta sesión, no crear otro —
+  // devolverlo tal cual (evita duplicados si se dispara dos veces seguidas,
+  // por ejemplo al marcar el último contenido como visto dos veces rápido).
+  const intentoActivo = await IntentoExamen.findOne({
+    userId,
+    sesionId: sesion._id,
+    fechaFin: null,
+  });
+  if (intentoActivo) {
+    return { ok: true, intento: intentoActivo, yaExistia: true };
+  }
+
+  const versionesActivas = await Examen.find({ sesionId, activo: true });
+  if (versionesActivas.length === 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: "No hay versiones de examen activas para esta sesión.",
+    };
+  }
+  const examenElegido =
+    versionesActivas[Math.floor(Math.random() * versionesActivas.length)];
+
+  const intento = await IntentoExamen.create({
+    userId,
+    sesionId: sesion._id,
+    examenId: examenElegido._id,
+    numeroIntento: intentosPrevios + 1,
+    desbloqueadoPor,
+  });
+
+  if (sesion.numero > progreso.sesionActualDesbloqueada) {
+    progreso.sesionActualDesbloqueada = sesion.numero;
+    await progreso.save();
+  }
+
+  return { ok: true, intento };
+}
+
+// POST /api/examenes/:sesionId/desbloquear — coordinadora, manual (excepción/override)
 async function desbloquearExamen(req, res, next) {
   try {
     const { sesionId } = req.params;
@@ -112,74 +195,19 @@ async function desbloquearExamen(req, res, next) {
         .json({ success: false, error: "userId es obligatorio." });
     }
 
-    const sesion = await Sesion.findById(sesionId);
-    if (!sesion) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Sesión no encontrada." });
-    }
-
-    const progreso = await ProgresoEstudiante.findOne({ userId });
-    if (!progreso) {
-      return res.status(404).json({
-        success: false,
-        error:
-          "La estudiante no tiene un pago confirmado (no existe progreso registrado).",
-      });
-    }
-
-    // Orden estricto: solo se puede desbloquear la sesión siguiente a la ya
-    // desbloqueada, o repetir la sesión actual (reintento).
-    if (sesion.numero > progreso.sesionActualDesbloqueada + 1) {
-      return res.status(400).json({
-        success: false,
-        error: `La estudiante debe completar la Sesión ${progreso.sesionActualDesbloqueada} antes de avanzar a la Sesión ${sesion.numero}.`,
-      });
-    }
-
-    // Verificar intentos previos (máximo 3)
-    const intentosPrevios = await IntentoExamen.countDocuments({
+    const resultado = await intentarDesbloquear({
+      sesionId,
       userId,
-      sesionId: sesion._id,
-    });
-
-    if (intentosPrevios >= 3) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Esta estudiante ya agotó los 3 intentos permitidos para esta sesión.",
-      });
-    }
-
-    // NUEVO: asignación al azar entre las versiones activas de esta sesión.
-    // Antes la coordinadora elegía manualmente el examenId — eso dejaba sin
-    // resolver "quién decide la versión" y era fácil de repetir sin querer.
-    const versionesActivas = await Examen.find({ sesionId, activo: true });
-    if (versionesActivas.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "No hay versiones de examen activas para esta sesión. Crea al menos una con POST /api/examenes.",
-      });
-    }
-    const examenElegido =
-      versionesActivas[Math.floor(Math.random() * versionesActivas.length)];
-
-    const intento = await IntentoExamen.create({
-      userId,
-      sesionId: sesion._id,
-      examenId: examenElegido._id,
-      numeroIntento: intentosPrevios + 1,
       desbloqueadoPor: req.usuario._id,
     });
 
-    // Si es la primera vez que se desbloquea esta sesión, actualizar el avance
-    if (sesion.numero > progreso.sesionActualDesbloqueada) {
-      progreso.sesionActualDesbloqueada = sesion.numero;
-      await progreso.save();
+    if (!resultado.ok) {
+      return res
+        .status(resultado.status)
+        .json({ success: false, error: resultado.error });
     }
 
-    res.status(201).json({ success: true, data: intento });
+    res.status(201).json({ success: true, data: resultado.intento });
   } catch (error) {
     next(error);
   }
@@ -191,4 +219,5 @@ module.exports = {
   editarExamen,
   eliminarExamen,
   desbloquearExamen,
+  intentarDesbloquear, // exportado para contenidoSesionController.js e intentoExamenController.js
 };
