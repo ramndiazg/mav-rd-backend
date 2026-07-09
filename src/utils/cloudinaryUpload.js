@@ -4,25 +4,15 @@ const cloudinary = require("../config/cloudinary");
 // Sube un buffer en memoria a Cloudinary sin necesidad de guardarlo en disco.
 // resourceType 'raw' se usa para PDFs (no son imagen ni video).
 //
-// CORRECCIÓN: Cloudinary usa el public_id tal cual para construir la URL final.
-// Si no incluye la extensión (ej. "diploma-MAV-2026-000123" en vez de
-// "diploma-MAV-2026-000123.pdf"), el archivo queda servido sin ".pdf" al
-// final de la URL — el navegador no puede reconocer que es un PDF al
-// descargarlo y lo guarda como un archivo genérico ("file") en vez de PDF.
-// Por eso ahora se agrega automáticamente la extensión cuando corresponde.
-function subirBuffer(
-  buffer,
-  { folder, resourceType = "raw", filename, formato = "pdf" },
-) {
+// NOTA: por ahora el public_id se sube SIN extensión (como estaba
+// originalmente) — para ver/descargar el PDF hay que agregar ".pdf" a mano
+// al final de la URL. Se intentó agregar la extensión automáticamente, pero
+// eso chocó con una restricción de entrega de PDF/ZIP en la cuenta de
+// Cloudinary (401). Revertido hasta resolver esa configuración con calma.
+function subirBuffer(buffer, { folder, resourceType = "raw", filename }) {
   return new Promise((resolve, reject) => {
-    const tieneExtension = /\.[a-zA-Z0-9]+$/.test(filename);
-    const publicId =
-      resourceType === "raw" && formato && !tieneExtension
-        ? `${filename}.${formato}`
-        : filename;
-
     const uploadStream = cloudinary.uploader.upload_stream(
-      { folder, resource_type: resourceType, public_id: publicId },
+      { folder, resource_type: resourceType, public_id: filename },
       (error, result) => {
         if (error) return reject(error);
         resolve(result);
