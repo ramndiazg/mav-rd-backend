@@ -36,7 +36,8 @@ async function listarTodosPorSesion(req, res, next) {
 // POST /api/contenido-sesion — coordinadora/admin
 async function crearContenido(req, res, next) {
   try {
-    const { sesionId, titulo, tipo, url, contenidoTexto, orden } = req.body;
+    const { sesionId, titulo, tipo, url, contenidoTexto, imagenUrl, orden } =
+      req.body;
 
     if (!sesionId || !titulo || !tipo) {
       return res.status(400).json({
@@ -58,6 +59,7 @@ async function crearContenido(req, res, next) {
       tipo,
       url,
       contenidoTexto,
+      imagenUrl,
       orden: orden ?? 0,
     });
 
@@ -71,7 +73,8 @@ async function crearContenido(req, res, next) {
 async function editarContenido(req, res, next) {
   try {
     const { id } = req.params;
-    const { titulo, tipo, url, contenidoTexto, orden, activo } = req.body;
+    const { titulo, tipo, url, contenidoTexto, imagenUrl, orden, activo } =
+      req.body;
 
     const contenido = await ContenidoSesion.findById(id);
     if (!contenido) {
@@ -84,6 +87,7 @@ async function editarContenido(req, res, next) {
     if (tipo !== undefined) contenido.tipo = tipo;
     if (url !== undefined) contenido.url = url;
     if (contenidoTexto !== undefined) contenido.contenidoTexto = contenidoTexto;
+    if (imagenUrl !== undefined) contenido.imagenUrl = imagenUrl;
     if (orden !== undefined) contenido.orden = orden;
     if (activo !== undefined) contenido.activo = activo;
 

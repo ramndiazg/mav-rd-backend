@@ -17,6 +17,9 @@ const contenidoSesionSchema = new mongoose.Schema(
     url: { type: String },
     // Para 'texto' (HTML/Markdown corto, ej. un resumen o instrucciones)
     contenidoTexto: { type: String },
+    // NUEVO: imagen de portada opcional, para cualquier tipo de contenido —
+    // hace la lista de materiales más vistosa (ej. una miniatura del tema).
+    imagenUrl: { type: String },
     orden: { type: Number, default: 0 },
     activo: { type: Boolean, default: true },
   },
