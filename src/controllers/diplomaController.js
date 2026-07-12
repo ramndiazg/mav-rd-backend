@@ -1,10 +1,14 @@
+const jwt = require("jsonwebtoken");
 const Diploma = require("../models/Diploma");
 const User = require("../models/User");
 const Sesion = require("../models/Sesion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const { generarDiplomaPDF } = require("../utils/pdfGenerator");
 const { generarCodigoVerificacion } = require("../utils/verificationCode");
-const { subirBuffer } = require("../utils/cloudinaryUpload");
+const {
+  subirBuffer,
+  generarUrlDescargaFirmada,
+} = require("../utils/cloudinaryUpload");
 
 // GET /api/diplomas/elegibles — coordinadora/admin: estudiantes que completaron
 // el curso y todavía no tienen diploma generado
@@ -62,8 +66,6 @@ async function generarDiploma(req, res, next) {
         .json({ success: false, error: "Estudiante no encontrada." });
     }
 
-    // NUEVO: se traen los títulos reales de las sesiones aprobadas para que
-    // el diploma las liste por nombre, en vez de solo una frase genérica.
     const sesiones = await Sesion.find({
       numero: { $in: progreso.sesionesAprobadas },
     })
@@ -93,6 +95,7 @@ async function generarDiploma(req, res, next) {
       fechaEmision,
       generadoPor: req.usuario._id,
       urlPDF: resultadoSubida.secure_url,
+      publicIdCloudinary: resultadoSubida.public_id,
     });
 
     res.status(201).json({ success: true, data: diploma });
@@ -150,9 +153,92 @@ async function obtenerMiDiploma(req, res, next) {
   }
 }
 
+// Deriva el public_id (sin extensión) a partir de la URL pública guardada,
+// para los diplomas generados ANTES de guardar publicIdCloudinary.
+function derivarPublicIdDeUrl(urlPDF) {
+  const match = urlPDF.match(/\/upload\/v\d+\/(.+?)(\.[a-zA-Z0-9]+)?$/);
+  return match ? match[1] : null;
+}
+
+// Verifica el token manualmente, aceptando tanto el header Authorization
+// como ?token= por query string — esto último es necesario porque un link
+// <a href> de descarga no puede mandar headers personalizados.
+async function obtenerUsuarioDesdeToken(req) {
+  const header = req.headers.authorization;
+  const token = header?.startsWith("Bearer ")
+    ? header.slice(7)
+    : req.query.token;
+  if (!token) return null;
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    return await User.findById(payload.id);
+  } catch {
+    return null;
+  }
+}
+
+async function redirigirADescargaFirmada(diploma, res) {
+  const publicId =
+    diploma.publicIdCloudinary || derivarPublicIdDeUrl(diploma.urlPDF);
+  if (!publicId) {
+    return res.status(500).json({
+      success: false,
+      error:
+        "No se pudo determinar el archivo en Cloudinary para este diploma.",
+    });
+  }
+  const urlFirmada = generarUrlDescargaFirmada(publicId);
+  res.redirect(urlFirmada);
+}
+
+// GET /api/diplomas/me/descargar — la estudiante descarga el suyo
+async function descargarMiDiploma(req, res, next) {
+  try {
+    const usuario = await obtenerUsuarioDesdeToken(req);
+    if (!usuario || usuario.rol !== "estudiante") {
+      return res.status(401).json({ success: false, error: "No autorizado." });
+    }
+
+    const diploma = await Diploma.findOne({ userId: usuario._id });
+    if (!diploma) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Diploma no encontrado." });
+    }
+
+    await redirigirADescargaFirmada(diploma, res);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/diplomas/:id/descargar — coordinadora/admin
+async function descargarDiplomaPorId(req, res, next) {
+  try {
+    const usuario = await obtenerUsuarioDesdeToken(req);
+    if (!usuario || !["coordinadora", "admin"].includes(usuario.rol)) {
+      return res.status(401).json({ success: false, error: "No autorizado." });
+    }
+
+    const diploma = await Diploma.findById(req.params.id);
+    if (!diploma) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Diploma no encontrado." });
+    }
+
+    await redirigirADescargaFirmada(diploma, res);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   listarElegibles,
   generarDiploma,
   verificarDiploma,
   obtenerMiDiploma,
+  descargarMiDiploma,
+  descargarDiplomaPorId,
 };
