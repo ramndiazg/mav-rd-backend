@@ -165,7 +165,7 @@ async function generarDiplomaPDF({
   sesionesAMostrar
     .sort((a, b) => a.numero - b.numero)
     .forEach((sesion) => {
-      const texto = `✓  Sesión ${sesion.numero}: ${sesion.titulo}`;
+      const texto = `-  Sesión ${sesion.numero}: ${sesion.titulo}`;
       dibujarTextoCentrado(page, texto, ySesiones, fontTexto, 12, azul, width);
       ySesiones -= 20;
     });
