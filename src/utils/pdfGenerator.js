@@ -4,12 +4,12 @@ const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 
 // Coloca el logo en src/assets/logo-mav-rd.png (mismo archivo que usa el
 // frontend en public/logo-mav-rd.png). Si no existe, el diploma se genera
-// igual, solo sin el logo — no rompe nada.
+// igual, solo sin el logo — no rompe nada, pero revisa que el archivo esté
+// ahí si esperas verlo.
 const RUTA_LOGO = path.join(__dirname, "../assets/logo-mav-rd.png");
 
 // Centra texto horizontalmente con precisión real (mide el texto con la
-// fuente exacta) en vez de estimar por cantidad de caracteres, que quedaba
-// torcido con nombres muy cortos o muy largos.
+// fuente exacta) en vez de estimar por cantidad de caracteres.
 function dibujarTextoCentrado(page, texto, y, font, size, color, anchoPagina) {
   const anchoTexto = font.widthOfTextAtSize(texto, size);
   page.drawText(texto, {
@@ -21,9 +21,22 @@ function dibujarTextoCentrado(page, texto, y, font, size, color, anchoPagina) {
   });
 }
 
+// Centra texto respecto a un punto X arbitrario (para texto dentro del sello,
+// que no está centrado en la página completa).
+function dibujarTextoCentradoEnX(page, texto, xCentro, y, font, size, color) {
+  const anchoTexto = font.widthOfTextAtSize(texto, size);
+  page.drawText(texto, { x: xCentro - anchoTexto / 2, y, size, font, color });
+}
+
+// Quita el prefijo "Sesión N: " del título si ya viene incluido (nuestras
+// sesiones en la base se llaman "Sesión 1: Introducción a la Ley de
+// Tránsito", etc.) — evita que el diploma diga "Sesión 1: Sesión 1: ...".
+function tituloSinPrefijo(titulo, numero) {
+  return titulo.replace(new RegExp(`^Sesión\\s*${numero}\\s*:\\s*`, "i"), "");
+}
+
 async function generarDiplomaPDF({
   nombreCompleto,
-  cedula,
   fechaEmision,
   codigoVerificacion,
   sesiones = [], // [{ numero, titulo }] — opcional, para listar el detalle real
@@ -59,13 +72,6 @@ async function generarDiplomaPDF({
     borderColor: dorado,
     borderWidth: 1,
   });
-  // Línea de acento bajo el encabezado
-  page.drawLine({
-    start: { x: width / 2 - 130, y: height - 132 },
-    end: { x: width / 2 + 130, y: height - 132 },
-    thickness: 1.5,
-    color: dorado,
-  });
 
   // --- Logo (si existe el archivo) ---
   let logoAlto = 0;
@@ -76,13 +82,15 @@ async function generarDiplomaPDF({
     const logoAncho = (logoImg.width / logoImg.height) * logoAlto;
     page.drawImage(logoImg, {
       x: (width - logoAncho) / 2,
-      y: height - 60 - logoAlto,
+      y: height - 55 - logoAlto,
       width: logoAncho,
       height: logoAlto,
     });
   }
 
-  const yTitulo = height - (logoAlto ? 60 + logoAlto + 30 : 75);
+  // --- Todo el layout se calcula desde este único punto de referencia ---
+  // así nada se desalinea si el logo existe o no.
+  const yTitulo = height - (logoAlto ? 55 + logoAlto + 35 : 80);
 
   dibujarTextoCentrado(
     page,
@@ -96,46 +104,44 @@ async function generarDiplomaPDF({
   dibujarTextoCentrado(
     page,
     "CERTIFICADO DE FINALIZACIÓN DEL CURSO TEÓRICO-PRÁCTICO DE EDUCACIÓN VIAL",
-    yTitulo - 24,
+    yTitulo - 22,
     fontTexto,
     11,
     grisClaro,
     width,
   );
 
+  // Línea decorativa — ahora relativa a yTitulo, ya no se desalinea
+  page.drawLine({
+    start: { x: width / 2 - 130, y: yTitulo - 38 },
+    end: { x: width / 2 + 130, y: yTitulo - 38 },
+    thickness: 1.2,
+    color: dorado,
+  });
+
   dibujarTextoCentrado(
     page,
     "Se otorga el presente certificado a",
-    yTitulo - 65,
+    yTitulo - 62,
     fontItalica,
     13,
     gris,
     width,
   );
-
   dibujarTextoCentrado(
     page,
     nombreCompleto.toUpperCase(),
-    yTitulo - 105,
+    yTitulo - 102,
     fontTitulo,
     28,
     rosa,
-    width,
-  );
-  dibujarTextoCentrado(
-    page,
-    `Cédula: ${cedula}`,
-    yTitulo - 128,
-    fontTexto,
-    12,
-    gris,
     width,
   );
 
   dibujarTextoCentrado(
     page,
     "por haber completado satisfactoriamente las siguientes sesiones,",
-    yTitulo - 160,
+    yTitulo - 135,
     fontTexto,
     12,
     gris,
@@ -144,14 +150,14 @@ async function generarDiplomaPDF({
   dibujarTextoCentrado(
     page,
     "aprobando el examen correspondiente a cada una:",
-    yTitulo - 178,
+    yTitulo - 153,
     fontTexto,
     12,
     gris,
     width,
   );
 
-  // --- Detalle de las sesiones aprobadas (sin calificación, solo el nombre) ---
+  // --- Detalle de las sesiones aprobadas (solo el título, sin repetir "Sesión N") ---
   const sesionesAMostrar =
     sesiones.length > 0
       ? sesiones
@@ -161,45 +167,121 @@ async function generarDiplomaPDF({
           { numero: 3, titulo: "Buenas prácticas de conducción" },
         ];
 
-  let ySesiones = yTitulo - 215;
+  let yLinea = yTitulo - 190;
   sesionesAMostrar
     .sort((a, b) => a.numero - b.numero)
     .forEach((sesion) => {
-      const texto = `-  Sesión ${sesion.numero}: ${sesion.titulo}`;
-      dibujarTextoCentrado(page, texto, ySesiones, fontTexto, 12, azul, width);
-      ySesiones -= 20;
+      const texto = `-  ${tituloSinPrefijo(sesion.titulo, sesion.numero)}`;
+      dibujarTextoCentrado(page, texto, yLinea, fontTexto, 12, azul, width);
+      yLinea -= 20;
     });
+
+  // Mención de la parte práctica (se imparte fuera de la plataforma)
+  yLinea -= 10;
+  dibujarTextoCentrado(
+    page,
+    "Asimismo, completó de forma presencial el curso práctico de manejo.",
+    yLinea,
+    fontItalica,
+    12,
+    gris,
+    width,
+  );
 
   const fechaTexto = new Date(fechaEmision).toLocaleDateString("es-DO", {
     year: "numeric",
     month: "long",
     day: "numeric",
   });
+  yLinea -= 28;
   dibujarTextoCentrado(
     page,
     `Emitido en Santo Domingo, República Dominicana, el ${fechaTexto}`,
-    ySesiones - 20,
+    yLinea,
     fontTexto,
     11,
     gris,
     width,
   );
 
-  // --- Firma ---
+  // --- Firma (en dos líneas) ---
+  const yFirmaLinea = 118;
   page.drawLine({
-    start: { x: width / 2 - 110, y: 110 },
-    end: { x: width / 2 + 110, y: 110 },
+    start: { x: width / 2 - 110, y: yFirmaLinea },
+    end: { x: width / 2 + 110, y: yFirmaLinea },
     thickness: 1,
     color: gris,
   });
   dibujarTextoCentrado(
     page,
-    "María Díaz — Fundadora, Mujeres al Volante R.D.",
-    92,
-    fontTexto,
-    11,
+    "María Díaz",
+    yFirmaLinea - 16,
+    fontTitulo,
+    12,
     gris,
     width,
+  );
+  dibujarTextoCentrado(
+    page,
+    "Fundadora, Mujeres al Volante R.D.",
+    yFirmaLinea - 32,
+    fontTexto,
+    10,
+    grisClaro,
+    width,
+  );
+
+  // --- Sello de autenticidad (círculo doble + estrella) ---
+  const selloX = width - 130;
+  const selloY = 145;
+  page.drawEllipse({
+    x: selloX,
+    y: selloY,
+    xScale: 46,
+    yScale: 46,
+    borderColor: dorado,
+    borderWidth: 2,
+  });
+  page.drawEllipse({
+    x: selloX,
+    y: selloY,
+    xScale: 39,
+    yScale: 39,
+    borderColor: azul,
+    borderWidth: 1,
+  });
+  dibujarTextoCentradoEnX(
+    page,
+    "CURSO",
+    selloX,
+    selloY + 15,
+    fontTitulo,
+    9,
+    azul,
+  );
+  dibujarTextoCentradoEnX(
+    page,
+    "APROBADO",
+    selloX,
+    selloY + 3,
+    fontTitulo,
+    9,
+    azul,
+  );
+  // Estrella decorativa dibujada como vector (un carácter ★ real rompe la
+  // fuente estándar de pdf-lib, que solo soporta codificación WinAnsi)
+  page.drawSvgPath(
+    "M 0,6 L 1.41,1.94 L 5.71,1.85 L 2.28,-0.74 L 3.53,-4.85 L 0,-2.4 L -3.53,-4.85 L -2.28,-0.74 L -5.71,1.85 L -1.41,1.94 Z",
+    { x: selloX, y: selloY - 8, color: dorado, scale: 1 },
+  );
+  dibujarTextoCentradoEnX(
+    page,
+    "MAV·RD",
+    selloX,
+    selloY - 24,
+    fontTexto,
+    8,
+    dorado,
   );
 
   // --- Código de verificación (pie) ---
@@ -210,16 +292,6 @@ async function generarDiplomaPDF({
     font: fontTexto,
     color: grisClaro,
   });
-  page.drawText(
-    "Verifica la autenticidad de este diploma en mujeresalvolanterd.com/verificar-diploma",
-    {
-      x: width - 380,
-      y: 40,
-      size: 9,
-      font: fontTexto,
-      color: grisClaro,
-    },
-  );
 
   const pdfBytes = await pdfDoc.save();
   return Buffer.from(pdfBytes);

@@ -178,7 +178,7 @@ async function obtenerUsuarioDesdeToken(req) {
   }
 }
 
-async function redirigirADescargaFirmada(diploma, res) {
+async function enviarDescargaFirmada(diploma, res) {
   const publicId =
     diploma.publicIdCloudinary || derivarPublicIdDeUrl(diploma.urlPDF);
   if (!publicId) {
@@ -188,8 +188,26 @@ async function redirigirADescargaFirmada(diploma, res) {
         "No se pudo determinar el archivo en Cloudinary para este diploma.",
     });
   }
+
   const urlFirmada = generarUrlDescargaFirmada(publicId);
-  res.redirect(urlFirmada);
+
+  // En vez de redirigir al navegador (lo que dejaba el archivo sin
+  // extensión reconocible), el backend trae el PDF y lo sirve directo con
+  // las cabeceras correctas — así el navegador SIEMPRE lo reconoce como PDF.
+  const respuestaCloudinary = await fetch(urlFirmada);
+  if (!respuestaCloudinary.ok) {
+    return res.status(502).json({
+      success: false,
+      error: "No se pudo obtener el PDF desde Cloudinary.",
+    });
+  }
+
+  const buffer = Buffer.from(await respuestaCloudinary.arrayBuffer());
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `inline; filename="${diploma.codigoVerificacion}.pdf"`,
+  });
+  res.send(buffer);
 }
 
 // GET /api/diplomas/me/descargar — la estudiante descarga el suyo
@@ -207,7 +225,7 @@ async function descargarMiDiploma(req, res, next) {
         .json({ success: false, error: "Diploma no encontrado." });
     }
 
-    await redirigirADescargaFirmada(diploma, res);
+    await enviarDescargaFirmada(diploma, res);
   } catch (error) {
     next(error);
   }
@@ -228,7 +246,7 @@ async function descargarDiplomaPorId(req, res, next) {
         .json({ success: false, error: "Diploma no encontrado." });
     }
 
-    await redirigirADescargaFirmada(diploma, res);
+    await enviarDescargaFirmada(diploma, res);
   } catch (error) {
     next(error);
   }
