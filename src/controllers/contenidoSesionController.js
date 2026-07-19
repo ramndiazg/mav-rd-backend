@@ -117,8 +117,14 @@ async function eliminarContenido(req, res, next) {
 }
 
 // POST /api/contenido-sesion/:id/marcar-visto — estudiante
-// Al completar TODO el contenido activo de una sesión, desbloquea el examen
-// automáticamente — sin que la coordinadora tenga que hacer nada.
+// Al completar TODO el contenido activo de una sesión, intenta desbloquear
+// el examen automáticamente. Si la sesión es una sesión nueva (no la que ya
+// tenía desbloqueada) y todavía no pasan 24h desde que aprobó la anterior,
+// intentarDesbloquear rechaza con esperaActiva:true — eso NO es un error
+// real aquí: el contenido igual queda marcado como visto, solo no se crea
+// el examen todavía. El frontend usa disponibleEn para pintar la cuenta
+// regresiva y luego llama a POST /intentos-examen/reintentar/:sesionId
+// cuando se cumple el plazo.
 async function marcarVisto(req, res, next) {
   try {
     const { id } = req.params;
@@ -160,21 +166,37 @@ async function marcarVisto(req, res, next) {
     );
 
     let examenDesbloqueado = false;
+    let esperaActiva = false;
+    let disponibleEn = null;
+
     if (completó) {
       const resultado = await intentarDesbloquear({
         sesionId: contenido.sesionId,
         userId,
         desbloqueadoPor: userId,
       });
-      // Si intentarDesbloquear falla (ej. ya agotó los 3 intentos, o no es su
-      // turno todavía), no rompemos la respuesta de "marcar visto" — el
-      // contenido igual queda marcado, solo no se crea un examen nuevo.
-      examenDesbloqueado = resultado.ok;
+
+      if (resultado.ok) {
+        examenDesbloqueado = true;
+      } else if (resultado.esperaActiva) {
+        // Caso esperado: ya vio todo pero aún no pasan las 24h. No es un
+        // error — el frontend lo usa para mostrar la cuenta regresiva.
+        esperaActiva = true;
+        disponibleEn = resultado.disponibleEn;
+      }
+      // Cualquier otro rechazo (ej. ya agotó los 3 intentos) simplemente
+      // deja examenDesbloqueado en false, sin romper esta respuesta — el
+      // contenido de todas formas queda marcado como visto.
     }
 
     res.json({
       success: true,
-      data: { contenidoId: contenido._id, examenDesbloqueado },
+      data: {
+        contenidoId: contenido._id,
+        examenDesbloqueado,
+        esperaActiva,
+        disponibleEn,
+      },
     });
   } catch (error) {
     next(error);

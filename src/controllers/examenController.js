@@ -93,18 +93,33 @@ async function eliminarExamen(req, res, next) {
 }
 
 /**
- * Lógica compartida de desbloqueo — la usan tres caminos distintos:
- * 1) La coordinadora, manualmente, desde el panel (excepción/override).
+ * Lógica compartida de desbloqueo del EXAMEN — la usan tres caminos distintos:
+ * 1) La coordinadora, manualmente, desde el panel (excepción/override — esta
+ *    SÍ puede saltarse la espera de 24h, ver esOverrideManual abajo).
  * 2) El sistema, automáticamente, cuando la estudiante termina de ver todo
  *    el contenido de estudio de una sesión (ver contenidoSesionController.js).
- * 3) La propia estudiante, con el botón de autoservicio "Reintentar examen"
- *    después de reprobar (ver intentoExamenController.js).
+ * 3) La propia estudiante, con el botón de autoservicio "Reintentar examen" o
+ *    "Ir al examen" una vez cumplida la espera (ver intentoExamenController.js).
+ *
+ * IMPORTANTE — separación de responsabilidades (corregido):
+ * Esta función SOLO decide si se puede crear un intento de examen. El acceso
+ * a la TEORÍA de la siguiente sesión (progreso.sesionActualDesbloqueada) ya
+ * NO se toca aquí — se adelanta inmediatamente al aprobar un examen, dentro
+ * de `entregarIntento` (intentoExamenController.js), para que la teoría esté
+ * disponible sin esperar las 24h del examen. El orden de las sesiones para
+ * efectos del EXAMEN se valida contra `sesionesAprobadas`, no contra
+ * `sesionActualDesbloqueada`.
  *
  * No es un handler de Express — no recibe req/res, así que se puede llamar
  * desde cualquier controller. Devuelve { ok: true, intento } o
- * { ok: false, status, error }.
+ * { ok: false, status, error, esperaActiva?, disponibleEn? }.
  */
-async function intentarDesbloquear({ sesionId, userId, desbloqueadoPor }) {
+async function intentarDesbloquear({
+  sesionId,
+  userId,
+  desbloqueadoPor,
+  esOverrideManual = false,
+}) {
   const sesion = await Sesion.findById(sesionId);
   if (!sesion) {
     return { ok: false, status: 404, error: "Sesión no encontrada." };
@@ -120,13 +135,16 @@ async function intentarDesbloquear({ sesionId, userId, desbloqueadoPor }) {
     };
   }
 
-  // Orden estricto: solo se puede desbloquear la sesión siguiente a la ya
-  // desbloqueada, o repetir la sesión actual (reintento).
-  if (sesion.numero > progreso.sesionActualDesbloqueada + 1) {
+  // Orden estricto del EXAMEN: la sesión N solo se puede desbloquear si es la
+  // Sesión 1, o si la Sesión N-1 ya está aprobada.
+  if (
+    sesion.numero > 1 &&
+    !progreso.sesionesAprobadas.includes(sesion.numero - 1)
+  ) {
     return {
       ok: false,
       status: 400,
-      error: `La estudiante debe completar la Sesión ${progreso.sesionActualDesbloqueada} antes de avanzar a la Sesión ${sesion.numero}.`,
+      error: `Debes aprobar la Sesión ${sesion.numero - 1} antes de tomar el examen de la Sesión ${sesion.numero}.`,
     };
   }
 
@@ -156,6 +174,31 @@ async function intentarDesbloquear({ sesionId, userId, desbloqueadoPor }) {
     return { ok: true, intento: intentoActivo, yaExistia: true };
   }
 
+  // Espera mínima de 24h: solo aplica al PRIMER intento de una sesión que no
+  // sea la Sesión 1 (nunca a un reintento de una sesión que ya empezó a
+  // tomarse — quien ya reprobó una vez no debe esperar otra vez), y solo si
+  // no es un override manual de la coordinadora/admin.
+  if (intentosPrevios === 0 && sesion.numero > 1 && !esOverrideManual) {
+    const aprobacionAnterior = progreso.fechasAprobacionSesion.find(
+      (f) => f.sesion === sesion.numero - 1,
+    );
+    if (aprobacionAnterior) {
+      const disponibleEn = new Date(
+        aprobacionAnterior.fecha.getTime() + 24 * 60 * 60 * 1000,
+      );
+      if (Date.now() < disponibleEn.getTime()) {
+        return {
+          ok: false,
+          status: 403,
+          error:
+            "Debes esperar 24 horas desde que aprobaste la sesión anterior antes de poder tomar este examen.",
+          esperaActiva: true,
+          disponibleEn,
+        };
+      }
+    }
+  }
+
   const versionesActivas = await Examen.find({ sesionId, activo: true });
   if (versionesActivas.length === 0) {
     return {
@@ -175,10 +218,9 @@ async function intentarDesbloquear({ sesionId, userId, desbloqueadoPor }) {
     desbloqueadoPor,
   });
 
-  if (sesion.numero > progreso.sesionActualDesbloqueada) {
-    progreso.sesionActualDesbloqueada = sesion.numero;
-    await progreso.save();
-  }
+  // NOTA: ya no se actualiza progreso.sesionActualDesbloqueada aquí — ver el
+  // comentario grande arriba de la función. Eso ahora vive en
+  // entregarIntento (intentoExamenController.js).
 
   return { ok: true, intento };
 }
@@ -199,6 +241,7 @@ async function desbloquearExamen(req, res, next) {
       sesionId,
       userId,
       desbloqueadoPor: req.usuario._id,
+      esOverrideManual: true, // la coordinadora/admin puede saltarse la espera de 24h
     });
 
     if (!resultado.ok) {
