@@ -307,3 +307,37 @@ Nosotros, Kit de Preparación, Contacto/redes) sin depender de un despliegue.
   `intentosExamen` cada vez que se pinta el dashboard de la estudiante.
 - El precio de los planes vive en `configuracion`, no hardcodeado, para que el admin
   pueda cambiarlo sin intervención del desarrollador.
+
+## Actualización de esquemas — imágenes y descarga firmada de diploma
+
+### `contenidoSesion` — campo nuevo
+
+```js
+{
+  // ...campos existentes...
+  imagenUrl: String,   // NUEVO — imagen de portada opcional, subida a Cloudinary
+}
+```
+
+### `diplomas` — campo nuevo
+
+```js
+{
+  // ...campos existentes...
+  publicIdCloudinary: String,   // NUEVO — public_id real en Cloudinary (sin
+                                  // extensión), necesario para generar URLs
+                                  // de descarga firmadas. Los diplomas
+                                  // generados antes de este campo no lo
+                                  // tienen — el backend lo deriva de urlPDF
+                                  // como respaldo si falta.
+}
+```
+
+### `contenidoPagina` — nuevas claves en uso (mismo esquema, sin cambios de estructura)
+
+- `acerca_de_historia_imagen`, `acerca_de_fundadora_imagen` (tipo `url`)
+- `acerca_de_mision`, `acerca_de_vision`, `acerca_de_valores` (tipo `html`)
+- `inicio_hero_titulo`, `inicio_hero_texto`, `inicio_desde_texto` (tipo `texto`/`html`, ya estaban planeadas, ahora sembradas y en uso real)
+
+No se agregaron colecciones nuevas en esta ronda — solo campos a colecciones
+existentes.

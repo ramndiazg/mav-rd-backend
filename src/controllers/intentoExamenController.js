@@ -66,6 +66,56 @@ async function obtenerHistorial(req, res, next) {
   }
 }
 
+// GET /api/intentos-examen/:id/detalle — NUEVO
+// Detalle pregunta por pregunta de un intento YA ENTREGADO: qué marcó la
+// estudiante vs. cuál era la correcta, para pintar verde/rojo en el frontend.
+// No se expone nada de esto mientras el intento sigue en curso (fechaFin null).
+async function obtenerDetalleIntento(req, res, next) {
+  try {
+    const intento = await IntentoExamen.findById(req.params.id).populate(
+      "examenId",
+    );
+
+    if (!intento) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Intento no encontrado." });
+    }
+
+    if (String(intento.userId) !== String(req.usuario._id)) {
+      return res
+        .status(403)
+        .json({ success: false, error: "Este intento no te pertenece." });
+    }
+
+    if (!intento.fechaFin) {
+      return res.status(400).json({
+        success: false,
+        error: "Este examen todavía no ha sido entregado.",
+      });
+    }
+
+    const detalle = intento.examenId.preguntas.map((p, i) => ({
+      texto: p.texto,
+      opciones: p.opciones,
+      respuestaEstudiante: intento.respuestas[i],
+      respuestaCorrectaIndex: p.respuestaCorrectaIndex,
+      acerto: intento.respuestas[i] === p.respuestaCorrectaIndex,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        calificacion: intento.calificacion,
+        aprobado: intento.aprobado,
+        preguntas: detalle,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // POST /api/intentos-examen/reintentar/:sesionId — NUEVO
 // Autoservicio: la estudiante ya vio el contenido en su primer intento, así
 // que no tiene sentido pedirle que lo vea de nuevo para reprobar/reintentar.
@@ -224,4 +274,5 @@ module.exports = {
   reintentarExamen,
   iniciarIntento,
   entregarIntento,
+  obtenerDetalleIntento,
 };

@@ -7,6 +7,7 @@ const {
   reintentarExamen,
   iniciarIntento,
   entregarIntento,
+  obtenerDetalleIntento,
 } = require("../controllers/intentoExamenController");
 const { protegerRuta, permitirRoles } = require("../middleware/auth");
 
@@ -37,5 +38,7 @@ router.get(
   permitirRoles("coordinadora", "admin"),
   obtenerIntentosDeEstudiante,
 );
+
+router.get("/:id/detalle", permitirRoles("estudiante"), obtenerDetalleIntento);
 
 module.exports = router;

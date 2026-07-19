@@ -512,3 +512,83 @@ Primera pregunta a hacerle a la persona al empezar: "¿el backend sigue
 corriendo igual que lo dejamos, o hiciste cambios? ¿quieres que empecemos
 por la página de Login+Registro, o prefieres el layout general (Navbar,
 Footer, Home) primero?" — no asumir, confirmar antes de generar código.
+
+### Sesión 10 — 12/07/2026 — Imágenes, contenido real de estudio, y la saga completa del diploma
+
+**Imágenes:**
+
+- `ContenidoSesion` gana `imagenUrl` (portada opcional por material).
+- `contenidoPagina` gana uso real de imágenes: `acerca_de_historia_imagen`,
+  `acerca_de_fundadora_imagen`, más Misión/Visión/Valores como HTML editable.
+- Todo sube por el `POST /api/uploads/imagen` que ya existía — no hubo que
+  crear infraestructura nueva de subida, solo nuevos lugares donde usarla.
+
+**Contenido de estudio real:** Ramon compartió 13 documentos Word que la
+fundación usa para enseñar (mecánica básica, seguridad activa/pasiva, ley de
+tránsito, señalización, motocicletas, manejo defensivo, el casco). Se leyeron
+todos, se detectaron 2 duplicados casi idénticos (se usó solo la versión más
+completa), y se organizaron en las 3 sesiones reales del sistema. Para
+Sesión 1 y 2 se investigó contenido adicional (Ley 63-17 real y clasificación
+oficial de señales de tránsito del INTRANT) para enriquecerlas, ya que
+tenían menos material propio que la Sesión 3. Resultado: 13 piezas de
+contenido sembradas vía `seedMaterialReal.js`.
+
+**Exámenes reales:** de 11 documentos de examen que Ramon compartió, se
+usaron los que tenían formato de opción múltiple aprovechable, se convirtieron
+algunos de Verdadero/Falso a opción múltiple, se descartaron 3 (un test
+psicométrico sin respuesta correcta/incorrecta, un examen de 20 preguntas
+abiertas, y un archivo vacío), y se completaron con preguntas nuevas escritas
+a partir del material real ya sembrado — todas verificadas contra ese
+material antes de subir (se corrigieron un par de datos que no coincidían,
+ej. velocidad de zona escolar). Resultado: 9 versiones de examen (3 por
+sesión, 10 preguntas c/u) sembradas vía `seedExamenesReal.js`.
+
+**La saga del diploma (varias rondas en esta sesión):**
+
+1. Se generó un diploma real por primera vez — bajaba como archivo genérico,
+   no como `.pdf`.
+2. Se corrigió `cloudinaryUpload.js` para forzar la extensión — pero eso
+   expuso un problema distinto: Cloudinary bloquea por defecto la entrega
+   pública de PDF/ZIP (401), y no se encontró el switch para desactivarlo en
+   su dashboard (se buscó en varias secciones: Account Security, Product
+   Environment Settings — no se ubicó la opción "Restricted media types").
+3. Se revirtió el fix de extensión como solución temporal (ver por el archivo
+   con `.pdf` agregado a mano en la URL).
+4. **Solución definitiva:** en vez de depender de la entrega pública de
+   Cloudinary, se implementaron URLs de descarga **firmadas**
+   (`cloudinary.utils.private_download_url`), servidas por el backend con
+   las cabeceras correctas (`Content-Type`, `Content-Disposition`) en vez de
+   redirigir al navegador. Esto evade el bloqueo sin necesitar ninguna
+   configuración de Cloudinary. Ver detalle técnico completo en
+   `Arquitectura_Backend.md`.
+5. Al generar el diploma con esta solución, apareció un bug distinto:
+   `WinAnsi cannot encode "✓"` — un símbolo usado en el PDF no es compatible
+   con la codificación que usan las fuentes estándar de `pdf-lib`. Esto hacía
+   fallar la generación completa (por eso un diploma "generado" a veces no
+   dejaba ningún registro). Corregido, y se aprovechó para rediseñar el
+   contenido del diploma a pedido de Ramon: se quitó la cédula, se quitó una
+   duplicación de texto ("Sesión 1: Sesión 1: ..."), se agregó mención de la
+   parte práctica del curso, se quitó la línea de verificación al pie, la
+   firma pasó a dos líneas, y se agregó un sello de autenticidad (círculos +
+   estrella dibujada como vector, para no repetir el mismo bug de fuente con
+   otro símbolo).
+6. Todo el layout del PDF se recalculó para depender de un solo punto de
+   referencia vertical — el bug de la línea decorativa mal ubicada (ver
+   reporte de Ramon: "una línea dorada que tacha las letras") era en
+   realidad una consecuencia de coordenadas fijas que no se ajustaban cuando
+   el logo no se cargaba.
+
+**Confirmado con una prueba real generando el PDF y convirtiéndolo a imagen
+para inspección visual antes de entregarlo — evitó al menos una ronda más de
+ida y vuelta.**
+
+**Pendiente real:**
+
+- [ ] Confirmar que el archivo `src/assets/logo-mav-rd.png` esté realmente
+      en el servidor de Render (el diploma se genera igual sin él, sin dar
+      error, así que un logo faltante pasa desapercibido si no se revisa).
+- [ ] "Me gusta" en comentarios de noticias — no diseñado todavía, requiere
+      agregar un campo al esquema de comentario. Pendiente desde antes de
+      esta sesión, sigue sin resolver porque nunca se compartieron los
+      archivos de frontend necesarios (`NoticiaAcciones.tsx`,
+      `noticias/[id]/page.tsx`).

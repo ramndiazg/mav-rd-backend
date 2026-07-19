@@ -214,7 +214,7 @@ async function generarDiplomaPDF({
   });
   dibujarTextoCentrado(
     page,
-    "María Díaz",
+    "María Díaz Guzmán",
     yFirmaLinea - 16,
     fontTitulo,
     12,

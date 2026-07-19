@@ -238,3 +238,102 @@ Testing
 Antes de cualquier cambio importante: npm run dev local + probar con curl o
 Postman los endpoints tocados. El flujo completo (registro → inscripción → pago
 → 3 sesiones → diploma → verificación) ya fue probado end-to-end exitosamente.
+
+## Actualización — Imágenes, material real, y saga completa del diploma
+
+**Contenido de Estudio por Sesión — campo nuevo:**
+`ContenidoSesion` ahora tiene `imagenUrl` (opcional, String) — una imagen de
+portada para cualquier tipo de material (video/pdf/enlace/texto), para hacer
+la lista de materiales más vistosa. Se sube con el mismo
+`POST /api/uploads/imagen` que ya usan Noticias/Testimonios. `crearContenido`
+y `editarContenido` ya la aceptan y la guardan.
+
+**Contenido de Página — dos campos nuevos de tipo imagen:**
+`acerca_de_historia_imagen` y `acerca_de_fundadora_imagen` (tipo `url`,
+subidas también vía `/api/uploads/imagen`). Además se agregaron
+`acerca_de_mision`, `acerca_de_vision` y `acerca_de_valores` (tipo `html`) —
+antes estos tres vivían hardcodeados con placeholders en el frontend, ahora
+son editables como el resto.
+
+**Diplomas — reescritura completa del flujo de descarga:**
+
+Cloudinary bloquea por defecto la entrega **pública** de archivos PDF/ZIP
+(medida de seguridad de la plataforma, no un bug nuestro) — por eso
+`urlPDF` daba `401` al abrirla directo, incluso después de corregir la
+extensión `.pdf`. No se encontró/activó el switch de esa restricción en el
+dashboard de Cloudinary, así que se resolvió sin depender de él:
+
+- `Diploma` (modelo) gana `publicIdCloudinary` (String) — el `public_id` real
+  en Cloudinary, guardado en el momento de generar el diploma.
+- `utils/cloudinaryUpload.js` gana `generarUrlDescargaFirmada(publicId,
+formato, resourceType)` — usa `cloudinary.utils.private_download_url()`
+  para generar una URL **firmada** con las credenciales de la cuenta. Una URL
+  firmada sí es entregada por Cloudinary aunque la pública esté restringida,
+  porque la restricción aplica a la entrega no autenticada, no a la firmada.
+- Nuevos endpoints, **sin `protegerRuta` estándar** porque aceptan el token
+  también por `?token=` en la query (un link `<a href>` de descarga no puede
+  mandar headers `Authorization`) — la verificación del token se hace a mano
+  dentro del controller con `jsonwebtoken`:
+  - `GET /api/diplomas/me/descargar` (estudiante, dueña del diploma)
+  - `GET /api/diplomas/:id/descargar` (coordinadora/admin)
+- Estos endpoints **no redirigen** al navegador a la URL firmada (eso dejaba
+  el archivo sin extensión reconocible otra vez) — el backend trae el PDF de
+  Cloudinary él mismo (`fetch`) y lo sirve directo con
+  `Content-Type: application/pdf` y `Content-Disposition` con el nombre de
+  archivo correcto.
+- **Respaldo para diplomas viejos:** si un `Diploma` no tiene
+  `publicIdCloudinary` guardado (generados antes de este cambio), el
+  controller lo deriva de `urlPDF` con una expresión regular, así que no hace
+  falta regenerar los diplomas ya existentes.
+
+**`utils/pdfGenerator.js` — varias correcciones de diseño y un bug de fuente:**
+
+- **Bug real:** `pdf-lib` con las fuentes estándar (`StandardFonts`) solo
+  soporta codificación `WinAnsi` (básicamente Windows-1252 / Latin-1). Un
+  símbolo `✓` en el texto hacía que `generarDiplomaPDF` lanzara
+  `WinAnsi cannot encode "✓"` y la generación completa fallaba — por eso un
+  diploma "generado" a veces no dejaba ningún documento `Diploma` creado. Se
+  quitó ese símbolo. Ojo con esto para cualquier texto futuro que se agregue
+  a un PDF con `pdf-lib`: emojis y símbolos "decorativos" fuera de
+  Windows-1252 rompen la generación (los acentos y ñ del español sí están
+  soportados, no son el problema).
+- El mismo bug apareció de nuevo con un carácter `★` para el sello de
+  autenticidad — se resolvió dibujando una estrella como **vector** con
+  `page.drawSvgPath()` en vez de un carácter de fuente.
+- Todo el layout del diploma se recalculó para depender de un único punto de
+  referencia (`yTitulo`), en vez de coordenadas fijas — antes, una línea
+  decorativa con posición fija quedaba mal ubicada (encima de otro texto)
+  cuando el logo no se cargaba y el layout se desplazaba.
+- Se quitó la cédula del cuerpo del diploma.
+- Se quitó la duplicación "Sesión 1: Sesión 1: ..." — los títulos de sesión
+  en la base ya incluyen el prefijo "Sesión N:", así que ya no se vuelve a
+  anteponer en el PDF.
+- Se agregó una frase mencionando la parte práctica del curso (impartida
+  fuera de la plataforma, presencial).
+- Se quitó la línea de "verificar en mujeresalvolanterd.com/...".
+- La firma ahora va en dos líneas (nombre / cargo).
+- Se agregó un sello de autenticidad: dos círculos concéntricos (dorado +
+  azul) con texto "CURSO APROBADO", una estrella vectorial, y "MAV·RD".
+
+**Scripts de siembra de contenido real (en `src/utils/`, se corren una sola
+vez cada uno):**
+
+- `seedMaterialReal.js` — puebla `contenidoSesion` con 13 materiales de
+  estudio reales (de los 13 documentos que la fundadora usa para enseñar),
+  organizados en las 3 sesiones. Necesita una carpeta `html/` con los 13
+  archivos HTML junto al script.
+- `seedExamenesReal.js` — puebla `examenes` con 9 versiones (3 por sesión,
+  10 preguntas cada una), verificadas/corregidas contra el contenido real ya
+  sembrado (algunas preguntas de los exámenes originales tenían datos que no
+  coincidían con el material de estudio real — se ajustaron a lo que dice el
+  material, no al revés).
+
+**CORS en producción:** el backend ya lee `FRONTEND_URL` desde una variable
+de entorno de Render para la lista de orígenes permitidos — hay que
+mantenerla actualizada si la URL de Vercel cambia (sin `/` al final).
+
+**Pendiente real:** el "me gusta" en comentarios de noticias (no en la
+noticia, en los comentarios individuales) — el modelo de comentario
+(`{ _id, userId, texto, fecha }`) no tiene ningún campo de likes. Si se
+decide implementarlo, hay que agregarlo al esquema y a un endpoint nuevo;
+todavía no se ha diseñado.
