@@ -1,13 +1,30 @@
 const Noticia = require("../models/Noticia");
 
-// GET /api/noticias — público
+// GET /api/noticias — público. Query params: page, limit
 async function listarNoticias(req, res, next) {
   try {
+    const { page, limit } = req.query;
+
+    // Sin límite, esto traía TODAS las noticias siempre — con el tiempo
+    // esto solo iba a crecer. Ahora pagina de verdad.
+    const paginaActual = Math.max(1, Number(page) || 1);
+    const limite = Math.min(50, Math.max(1, Number(limit) || 9));
+
+    const totalDocumentos = await Noticia.countDocuments({});
+    const totalPaginas = Math.max(1, Math.ceil(totalDocumentos / limite));
+
     const noticias = await Noticia.find({})
       .populate("autorId", "nombre apellido")
       .populate("comentarios.userId", "nombre apellido")
-      .sort({ createdAt: -1 });
-    res.json({ success: true, data: noticias });
+      .sort({ createdAt: -1 })
+      .skip((paginaActual - 1) * limite)
+      .limit(limite);
+
+    res.json({
+      success: true,
+      data: noticias,
+      paginacion: { paginaActual, totalPaginas, totalDocumentos, limite },
+    });
   } catch (error) {
     next(error);
   }

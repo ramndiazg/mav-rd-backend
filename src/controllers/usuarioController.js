@@ -2,10 +2,10 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 
 // GET /api/usuarios — coordinadora/admin: buscar usuarias por rol/nombre/cedula/email
-// Query params: rol, search, activo
+// Query params: rol, search, activo, page, limit
 async function listarUsuarios(req, res, next) {
   try {
-    const { rol, search, activo } = req.query;
+    const { rol, search, activo, page, limit } = req.query;
     const filtro = {};
 
     if (rol) filtro.rol = rol;
@@ -21,11 +21,26 @@ async function listarUsuarios(req, res, next) {
       ];
     }
 
+    // Antes esto traía hasta 50 resultados de golpe, sin decir si había más.
+    // Ahora es paginación real: page/limit por query string, con el total
+    // de páginas calculado desde un conteo aparte (countDocuments).
+    const paginaActual = Math.max(1, Number(page) || 1);
+    const limite = Math.min(100, Math.max(1, Number(limit) || 20));
+
+    const totalDocumentos = await User.countDocuments(filtro);
+    const totalPaginas = Math.max(1, Math.ceil(totalDocumentos / limite));
+
     const usuarios = await User.find(filtro)
       .select("-passwordHash")
-      .limit(50)
-      .sort({ createdAt: -1 });
-    res.json({ success: true, data: usuarios });
+      .sort({ createdAt: -1 })
+      .skip((paginaActual - 1) * limite)
+      .limit(limite);
+
+    res.json({
+      success: true,
+      data: usuarios,
+      paginacion: { paginaActual, totalPaginas, totalDocumentos, limite },
+    });
   } catch (error) {
     next(error);
   }

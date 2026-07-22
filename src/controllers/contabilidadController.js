@@ -32,9 +32,10 @@ async function crearMovimiento(req, res, next) {
 }
 
 // GET /api/contabilidad/movimientos — admin, filtrable por mes/año/tipo/categoria
+// Query params nuevos: page, limit
 async function listarMovimientos(req, res, next) {
   try {
-    const { mes, anio, tipo, categoria } = req.query;
+    const { mes, anio, tipo, categoria, page, limit } = req.query;
     const filtro = {};
 
     if (tipo) filtro.tipo = tipo;
@@ -46,11 +47,25 @@ async function listarMovimientos(req, res, next) {
       filtro.fecha = { $gte: inicio, $lt: fin };
     }
 
+    // Antes esto traía TODOS los movimientos que calzaran con el filtro, sin
+    // límite — con meses/años acumulados esto solo iba a crecer. Ahora pagina.
+    const paginaActual = Math.max(1, Number(page) || 1);
+    const limite = Math.min(100, Math.max(1, Number(limit) || 20));
+
+    const totalDocumentos = await MovimientoContable.countDocuments(filtro);
+    const totalPaginas = Math.max(1, Math.ceil(totalDocumentos / limite));
+
     const movimientos = await MovimientoContable.find(filtro)
       .populate("registradoPor", "nombre apellido")
-      .sort({ fecha: -1 });
+      .sort({ fecha: -1 })
+      .skip((paginaActual - 1) * limite)
+      .limit(limite);
 
-    res.json({ success: true, data: movimientos });
+    res.json({
+      success: true,
+      data: movimientos,
+      paginacion: { paginaActual, totalPaginas, totalDocumentos, limite },
+    });
   } catch (error) {
     next(error);
   }
