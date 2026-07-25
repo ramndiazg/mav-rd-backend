@@ -22,6 +22,11 @@ const userSchema = new mongoose.Schema(
       default: "estudiante",
     },
     activo: { type: Boolean, default: true },
+
+    // --- NUEVO: verificación de email ---
+    emailVerificado: { type: Boolean, default: false },
+    tokenVerificacionEmail: { type: String, default: null },
+    tokenVerificacionExpira: { type: Date, default: null },
   },
   { timestamps: true },
 );
@@ -30,6 +35,7 @@ const userSchema = new mongoose.Schema(
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.passwordHash;
+  delete obj.tokenVerificacionEmail;
   return obj;
 };
 

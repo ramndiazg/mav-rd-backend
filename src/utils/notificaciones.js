@@ -76,4 +76,24 @@ async function notificarNuevoVoucher({ nombreEstudiante, tipoPlan, monto }) {
   }
 }
 
-module.exports = { notificarNuevoVoucher };
+// Se llama al registrarse (o al pedir reenvío) para que la estudiante
+// verifique su correo. No bloquea el registro si falla — se intenta, y si
+// no se puede enviar, solo se registra en consola (igual que con los avisos
+// de voucher nuevo).
+async function enviarCorreoVerificacion({ to, nombre, token }) {
+  try {
+    const urlVerificacion = `${process.env.FRONTEND_URL}/verificar-email?token=${token}`;
+    await enviarEmailResend({
+      to,
+      subject: "Verifica tu correo — Muvo RD Vial",
+      html: `<p>Hola ${nombre},</p><p>Confirma tu correo para poder inscribirte en el curso:</p><p><a href="${urlVerificacion}">Verificar mi correo</a></p><p>Este link expira en 24 horas.</p>`,
+    });
+  } catch (err) {
+    console.error(
+      `No se pudo enviar el correo de verificación a ${to} —`,
+      err.message,
+    );
+  }
+}
+
+module.exports = { notificarNuevoVoucher, enviarCorreoVerificacion };

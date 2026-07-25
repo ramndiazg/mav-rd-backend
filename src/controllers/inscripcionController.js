@@ -199,6 +199,14 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
         .json({ success: false, error: 'tipoPlan debe ser "normal" o "vip".' });
     }
 
+    if (!req.usuario.emailVerificado) {
+      return res.status(403).json({
+        success: false,
+        error:
+          "Verifica tu correo antes de inscribirte. Revisa tu bandeja de entrada o pide reenviar el correo desde tu panel.",
+      });
+    }
+
     // Buscamos si ya tiene alguna inscripción (la más reciente)
     const actual = await Inscripcion.findOne({ userId }).sort({
       createdAt: -1,

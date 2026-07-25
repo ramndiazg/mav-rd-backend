@@ -1,11 +1,17 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const User = require("../models/User");
+const { enviarCorreoVerificacion } = require("../utils/notificaciones");
 
 function generarToken(userId) {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   });
+}
+
+function generarTokenVerificacion() {
+  return crypto.randomBytes(32).toString("hex");
 }
 
 // POST /api/auth/registro — cuenta gratuita de estudiante
@@ -38,6 +44,8 @@ async function registro(req, res, next) {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const tokenVerificacionEmail = generarTokenVerificacion();
+    const tokenVerificacionExpira = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
 
     const nuevoUsuarioCreado = await User.create({
       nombre,
@@ -49,6 +57,17 @@ async function registro(req, res, next) {
       provincia,
       fechaNacimiento,
       rol: "estudiante",
+      tokenVerificacionEmail,
+      tokenVerificacionExpira,
+    });
+
+    // Sin await a propósito: no debe demorar ni arriesgar la respuesta del
+    // registro si Resend falla — el error, si lo hay, se registra dentro
+    // de enviarCorreoVerificacion.
+    enviarCorreoVerificacion({
+      to: nuevoUsuarioCreado.email,
+      nombre: nuevoUsuarioCreado.nombre,
+      token: tokenVerificacionEmail,
     });
 
     // Se vuelve a consultar excluyendo passwordHash antes de responder al frontend
@@ -66,9 +85,68 @@ async function registro(req, res, next) {
   }
 }
 
-// Agregar este require al inicio de authController.js si no existe ya:
-// const bcrypt = require("bcrypt"); // o "bcryptjs", según cuál uses en registro/login
-// const User = require("../models/User");
+// GET /api/auth/verificar-email?token=... — público (viene de un link de correo)
+async function verificarEmail(req, res, next) {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).json({ success: false, error: "Falta el token." });
+    }
+
+    const usuario = await User.findOne({
+      tokenVerificacionEmail: token,
+      tokenVerificacionExpira: { $gt: new Date() },
+    });
+
+    if (!usuario) {
+      return res.status(400).json({
+        success: false,
+        error: "El link de verificación es inválido o ya expiró.",
+      });
+    }
+
+    usuario.emailVerificado = true;
+    usuario.tokenVerificacionEmail = null;
+    usuario.tokenVerificacionExpira = null;
+    await usuario.save();
+
+    res.json({ success: true, data: { mensaje: "Correo verificado." } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /api/auth/reenviar-verificacion — requiere estar logueada
+async function reenviarVerificacion(req, res, next) {
+  try {
+    if (req.usuario.emailVerificado) {
+      return res
+        .status(409)
+        .json({ success: false, error: "Tu correo ya está verificado." });
+    }
+
+    const usuario = await User.findById(req.usuario._id);
+    usuario.tokenVerificacionEmail = generarTokenVerificacion();
+    usuario.tokenVerificacionExpira = new Date(
+      Date.now() + 24 * 60 * 60 * 1000,
+    );
+    await usuario.save();
+
+    await enviarCorreoVerificacion({
+      to: usuario.email,
+      nombre: usuario.nombre,
+      token: usuario.tokenVerificacionEmail,
+    });
+
+    res.json({
+      success: true,
+      data: { mensaje: "Correo de verificación reenviado." },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
 // PATCH /api/auth/cambiar-password — cualquier usuaria autenticada
 async function cambiarPassword(req, res, next) {
@@ -89,9 +167,6 @@ async function cambiarPassword(req, res, next) {
       });
     }
 
-    // req.usuario lo pone protegerRuta a partir del token — traemos el
-    // documento completo porque el que viene en req.usuario probablemente
-    // no incluye passwordHash (select: false es común en ese campo).
     const usuario = await User.findById(req.usuario._id).select(
       "+passwordHash",
     );
@@ -113,8 +188,6 @@ async function cambiarPassword(req, res, next) {
     next(error);
   }
 }
-
-// Agregar cambiarPassword al module.exports existente, junto a registro/login/perfil
 
 // POST /api/auth/login
 async function login(req, res, next) {
@@ -150,9 +223,6 @@ async function login(req, res, next) {
 
     const token = generarToken(usuario._id);
 
-    // Se vuelve a consultar excluyendo passwordHash antes de responder al frontend.
-    // (Asignar `usuario.passwordHash = undefined` no es suficiente: Mongoose puede
-    // seguir serializando el campo al convertir el documento a JSON.)
     const usuarioSinHash = await User.findById(usuario._id).select(
       "-passwordHash",
     );
@@ -165,8 +235,14 @@ async function login(req, res, next) {
 
 // GET /api/auth/perfil — requiere estar autenticada
 async function perfil(req, res) {
-  // req.usuario ya viene sin passwordHash (excluido en el middleware protegerRuta)
   res.json({ success: true, data: { usuario: req.usuario } });
 }
 
-module.exports = { registro, login, perfil, cambiarPassword };
+module.exports = {
+  registro,
+  login,
+  perfil,
+  cambiarPassword,
+  verificarEmail,
+  reenviarVerificacion,
+};
