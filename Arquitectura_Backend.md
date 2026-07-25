@@ -1,339 +1,266 @@
-Arquitectura del Backend — mav-rd-backend
+# Arquitectura del Backend — mav-rd-backend
 
-Stack: Node.js + Express + Mongoose (MongoDB Atlas) + JWT + Cloudinary (pdf-lib para PDFs)
+> Refleja el estado REAL del código al 25/07/2026. Reemplaza `Arquitectura_Backend.md`
+> + `BITACORA_1.md`. Para el historial de cómo se llegó aquí, ver `HISTORIAL_MODIFICACIONES.md`.
 
-Este documento refleja la implementación REAL y probada del backend, no el plan
-inicial. Es la fuente de verdad para construir el frontend.
+**Stack:** Node.js + Express + Mongoose (MongoDB Atlas) + JWT + Cloudinary (`pdf-lib` para PDFs)
 
-Estructura de carpetas
+## Infraestructura
 
+- **Hosting:** Render, tier free. El servicio se duerme tras 15 min de
+  inactividad — el primer request después de eso tarda ~30-60s (cold start).
+  El frontend debe contemplar esa demora, especialmente en login/primera carga.
+- **Base de datos:** MongoDB Atlas, cluster `mujeresalvolante.rd4sofa.mongodb.net`
+  (compartido con otra app — este proyecto usa exclusivamente la base de datos
+  `mav_rd` dentro de ese cluster, sin riesgo de cruce). Network Access con
+  `0.0.0.0/0` habilitado (necesario para las IPs dinámicas de Render).
+- **CORS:** hoy acepta un único origen exacto vía `process.env.FRONTEND_URL`
+  en Render (NO una lista separada por comas — a pesar de que documentación
+  anterior sugería que ya se había cambiado a lista, el incidente de dominio
+  del 22/07 confirmó que sigue siendo un solo string). Mejora pendiente:
+  aceptar múltiples orígenes separados por comas.
+- **Repo:** `ramndiazg/mav-rd-backend` en GitHub.
+- **Seguridad pendiente:** rotar `JWT_SECRET`, contraseña de MongoDB Atlas y
+  secreto de Cloudinary — quedaron expuestos en conversaciones de chat en
+  algún momento. Pendiente "cuando el proyecto sea definitivo".
+
+## Estructura de carpetas
+
+```
 mav-rd-backend/
 ├── src/
-│ ├── config/
-│ │ ├── db.js
-│ │ └── cloudinary.js
-│ ├── models/
-│ │ ├── User.js, Inscripcion.js, Configuracion.js, Sesion.js, Examen.js,
-│ │ │ IntentoExamen.js, ProgresoEstudiante.js, Diploma.js, Noticia.js,
-│ │ │ Testimonio.js, FAQ.js, MovimientoContable.js, BalanceMensual.js
-│ ├── controllers/ (uno por recurso, mismos nombres que los modelos)
-│ ├── routes/ (uno por recurso)
-│ ├── middleware/
-│ │ ├── auth.js → protegerRuta (verifica JWT), permitirRoles(...roles)
-│ │ ├── upload.js → multer en memoria, solo imágenes, máx 5MB
-│ │ └── errorHandler.js
-│ ├── utils/
-│ │ ├── pdfGenerator.js → generarDiplomaPDF, generarBalancePDF
-│ │ ├── cloudinaryUpload.js → subirBuffer(buffer, {folder, resourceType, filename})
-│ │ ├── verificationCode.js → generarCodigoVerificacion (formato MAV-2026-000001)
-│ │ └── seedSesiones.js → script, correr una vez: node src/utils/seedSesiones.js
-│ ├── app.js
-│ └── server.js
-├── .env (no se sube — ver .env.example)
+│   ├── config/
+│   │   ├── db.js
+│   │   └── cloudinary.js
+│   ├── models/
+│   │   ├── User.js, Inscripcion.js, Configuracion.js, Sesion.js, Examen.js,
+│   │   │ IntentoExamen.js, ProgresoEstudiante.js, ContenidoSesion.js, Diploma.js,
+│   │   │ Noticia.js, Testimonio.js, FAQ.js, ContenidoPagina.js,
+│   │   │ MovimientoContable.js, BalanceMensual.js
+│   ├── controllers/ (uno por recurso, mismos nombres que los modelos)
+│   ├── routes/ (uno por recurso)
+│   ├── middleware/
+│   │   ├── auth.js → protegerRuta (verifica JWT), permitirRoles(...roles)
+│   │   ├── upload.js → multer en memoria, solo imágenes, máx 5MB
+│   │   └── errorHandler.js
+│   ├── utils/
+│   │   ├── pdfGenerator.js → generarDiplomaPDF, generarBalancePDF
+│   │   ├── cloudinaryUpload.js → subirBuffer(), generarUrlDescargaFirmada()
+│   │   ├── verificationCode.js → generarCodigoVerificacion (MAV-<año>-000001)
+│   │   └── seedSesiones.js, seedMaterialReal.js, seedExamenesReal.js (scripts, correr una vez)
+│   ├── app.js
+│   └── server.js
+├── .env (no se sube)
 └── package.json
+```
 
-🔑 AUTENTICACIÓN — IMPORTANTE PARA EL FRONTEND
+## 🔑 Autenticación
 
-El backend NO usa cookies. El login devuelve un JWT en el body de la respuesta:
+El backend NO usa cookies. Login/registro devuelven el JWT en el body:
 
-json{ "success": true, "data": { "usuario": {...}, "token": "eyJ..." } }
+```json
+{ "success": true, "data": { "usuario": {...}, "token": "eyJ..." } }
+```
 
-El frontend debe:
+- El **payload del token solo trae `{ id }`** — nada de rol ni nombre. Cualquier
+  dato de perfil se obtiene con `GET /api/auth/perfil`.
+- Enviar el token en cada request protegido: `Authorization: Bearer <token>`.
+- Expira en 7 días (`JWT_EXPIRES_IN`). No hay refresh token — al expirar, la
+  usuaria vuelve a loguearse.
+- Roles: `estudiante`, `coordinadora`, `admin`. El registro público
+  (`POST /api/auth/registro`) SIEMPRE crea rol `estudiante`. Cuentas de
+  coordinadora las crea el admin vía `POST /api/usuarios/coordinadora`.
+- No existe "olvidé mi contraseña" (requiere servicio de email, fuera de
+  alcance). Sí existe cambiar contraseña estando logueada.
 
-Guardar el token (recomendado: localStorage o estado en memoria + sessionStorage).
-Enviarlo en cada request protegido como header: Authorization: Bearer <token>.
-El token expira en 7 días (configurable vía JWT_EXPIRES_IN).
-No hay endpoint de "refresh token" — al expirar, la usuaria debe volver a loguearse.
-Para saber si una sesión sigue siendo válida al cargar la app, llamar a
-GET /api/auth/perfil con el token guardado; si responde 401, redirigir a login.
-
-Roles: estudiante, coordinadora, admin. El registro público (/api/auth/registro)
-siempre crea cuentas con rol estudiante — no hay forma de auto-registrarse como
-coordinadora o admin (por diseño, es una medida de seguridad). Las cuentas de
-coordinadora las crea la fundadora (admin) vía POST /api/usuarios/coordinadora.
-
-Convención de respuestas
-
-Todas las respuestas son JSON con la forma:
-
-json{ "success": true, "data": {...} }
+### Convención de respuestas
+```json
+{ "success": true, "data": {...} }
 { "success": false, "error": "mensaje en español, listo para mostrar al usuario" }
-
-Referencia completa de endpoints
-
-Auth (/api/auth)
-
-MétodoRutaRolDescripciónPOST/registropúblicoCrea cuenta de estudiantePOST/loginpúblicoDevuelve { usuario, token }GET/perfilautenticadaDatos del usuario del token actualPATCH/cambiar-passwordautenticadaBody { passwordActual, passwordNueva }
-
-> ⚠️ "Olvidé mi contraseña" (sin sesión iniciada) sigue sin existir — requiere
-> servicio de email y queda fuera del alcance actual. `cambiar-password` es
-> distinto: solo sirve si la usuaria ya puede loguearse.
-
-Usuarios (/api/usuarios)
-
-MétodoRutaRolDescripciónGET/?rol=&search=&activo=coordinadora, adminBuscar usuarias (para elegir estudiante al inscribir)POST/coordinadoraadminCrear cuenta de coordinadoraPATCH/:id/estadoadminBody { activo: bool }PATCH/:id/roladminBody { rol }
-
-Configuración (/api/configuracion)
-
-MétodoRutaRolDescripciónGET/público{ precio_plan_normal, precio_plan_vip }PATCH/:claveadminBody { valor }
-
-Inscripciones (/api/inscripciones)
-
-MétodoRutaRolDescripciónPOST/coordinadora, adminBody { userId, tipoPlan: 'normal'|'vip', monto }GET/?estadoPago=coordinadora, adminListar (con datos de la estudiante poblados)GET/meestudianteSu propia inscripción (o null si no se ha inscrito) — así el dashboard sabe su estado de pago sin inferir nadaPATCH/:id/confirmar-pagocoordinadora, adminMarca pagado, crea ProgresoEstudiante y un MovimientoContable automático
-
-> **Regla formal (antes era un supuesto sin confirmar):** al confirmar el pago,
-> el `ProgresoEstudiante` que se crea DEBE inicializar `sesionActualDesbloqueada: 1`.
-> Si se crea en `0`, la estudiante paga y no puede ver ni la teoría de la
-> Sesión 1 (`GET /api/sesiones/:numero` exige `numero <= sesionActualDesbloqueada`).
-> Verificar esto en el código existente antes de dar por hecho que ya funciona así.
-
-Sesiones (/api/sesiones)
-
-MétodoRutaRolDescripciónGET/coordinadora, adminLas 3 sesiones completas (gestión)GET/:numeroestudianteSolo si numero <= sesionActualDesbloqueadaPATCH/:numeroadminEditar teoría/videos
-
-Exámenes (/api/examenes) — banco de preguntas por sesión
-
-MétodoRutaRolDescripciónPOST/coordinadora, adminCrear versión: { sesionId, nombreVersion, preguntas: [10 exactas] }GET/sesion/:sesionIdcoordinadora, adminVersiones disponibles de esa sesión (para mantenimiento del banco)PATCH/:idcoordinadora, adminEditar preguntas/opciones/respuesta correcta de una versión existente (ej. si cambia la Ley 63-17)DELETE/:idadminBorrado lógico (`activo: false`), NUNCA borrado físico — los `IntentoExamen` históricos siguen referenciando ese `examenId`POST/:sesionId/desbloquearcoordinadora, admin**Override manual** — ver nota abajo, ya no es el camino normal
-
-> **Cambio de diseño respecto a la versión anterior:** antes la coordinadora
-> elegía manualmente `examenId` al desbloquear. Ahora la ruta recibe `sesionId`
-> y el backend asigna al azar una versión activa. La fundadora (admin)
-> mantiene el banco de preguntas actualizado con PATCH/DELETE cuando cambie la ley.
-
-> **Cambio de diseño más grande (posterior):** el desbloqueo del examen dejó
-> de ser manual como camino normal. Ahora es **automático**: cuando la
-> estudiante marca como visto el último material de `contenidoSesion` de una
-> sesión, el backend desbloquea el examen solo (ver módulo `contenidoSesion`
-> abajo). `POST /:sesionId/desbloquear` sigue existiendo pero es una
-> **excepción/override** para la coordinadora — casos donde se necesita
-> forzar el desbloqueo sin pasar por el contenido.
->
-> La lógica real de desbloqueo (orden estricto, límite de 3 intentos, azar de
-> versión, no duplicar si ya hay un intento activo) vive en una función
-> interna reutilizable, `intentarDesbloquear()`, en `examenController.js` —
-> la usan tres caminos distintos: este endpoint manual, el auto-desbloqueo de
-> `contenidoSesion`, y el reintento de autoservicio de la estudiante (ver
-> abajo). No es un endpoint propio, es una función de JS que cualquier
-> controller puede importar y llamar directamente.
-
-Contenido de Estudio por Sesión (/api/contenido-sesion) — NUEVO
-
-Los materiales que la estudiante consume antes de que el examen se habilite.
-Reemplaza la idea original de que el examen se desbloqueaba puramente por
-acción manual de la coordinadora — ahora el consumo de contenido es lo que
-dispara el desbloqueo.
-
-MétodoRutaRolDescripciónGET/sesion/:sesionIdestudiante, coordinadora, adminMateriales activos de una sesión (lo que ve la estudiante para estudiar)GET/admin/sesion/:sesionIdcoordinadora, adminTodos los materiales de una sesión, incluidos inactivos (gestión)POST/coordinadora, adminCrear material: { sesionId, titulo, tipo: 'video'\|'pdf'\|'enlace'\|'texto', url?, contenidoTexto?, orden? }PATCH/:idcoordinadora, adminEditar un materialDELETE/:idadminBorrado lógico (`activo: false`)POST/:id/marcar-vistoestudianteMarca un material como visto. **Si con este ya vio TODOS los materiales activos de la sesión, dispara `intentarDesbloquear()` automáticamente** — sin que la coordinadora haga nada. Responde `{ contenidoId, examenDesbloqueado: bool }`
-
-Intentos de examen (/api/intentos-examen)
-
-MétodoRutaRolDescripciónGET/activo/:sesionIdestudianteDevuelve el intento sin entregar (`fechaFin: null`) más reciente de la estudiante para esa sesión — así el frontend obtiene el `id` que necesita para iniciar/entregar. 404 si no hay ninguno pendienteGET/historial/:sesionIdestudianteTodos sus intentos (entregados o no) de esa sesión — para que el frontend sepa si mostrar el botón de reintentoPOST/reintentar/:sesionIdestudiante**NUEVO** — autoservicio: si reprobó y le quedan intentos, la propia estudiante pide otro intento sin pasar por la coordinadora (ya vio el contenido la primera vez, no tiene sentido pedírselo de nuevo). Usa la misma `intentarDesbloquear()` internaPOST/:id/iniciarestudianteArranca el timer, devuelve preguntas SIN respuesta correctaPOST/:id/entregarestudianteBody { respuestas: [10 índices] } → califica (≥70% aprueba)GET/estudiante/:userIdcoordinadora, admin**NUEVO** — todos los intentos de una estudiante en todas las sesiones (con `sesionId` poblado), para el panel "Estudiantes"
-
-> Este `GET /activo/:sesionId` es lo que cierra el vacío detectado antes de
-> construir el Aula Virtual: sin él, la estudiante no tenía forma de saber el
-> `id` de su propio intento.
-
-Progreso (/api/progreso)
-
-MétodoRutaRolDescripciónGET/meestudianteSu propio progresoGET/:userIdcoordinadora, adminProgreso de una estudiante
-
-> `ProgresoEstudiante` ahora también guarda `contenidosVistos` (array de ids
-> de `ContenidoSesion` ya vistos) — ver `DATABASE.md`.
-
-Diplomas (/api/diplomas)
-
-MétodoRutaRolDescripciónGET/meestudianteSu propio diploma (404 si todavía no se ha generado)GET/elegiblescoordinadora, adminEstudiantes con curso completo sin diploma aúnPOST/:userId/generarcoordinadora, adminGenera PDF + código, sube a CloudinaryGET/verificar/:codigopúblicoVerificación pública del diploma
-
-> **Bug corregido:** el diploma se descargaba como un archivo genérico
-> ("file") en vez de `.pdf`. La causa estaba en `utils/cloudinaryUpload.js`:
-> el `public_id` se mandaba sin extensión (`diploma-MAV-2026-000123` en vez
-> de `...pdf`), así que la URL final de Cloudinary tampoco la tenía y el
-> navegador no reconocía el tipo de archivo al descargar. Corregido para que
-> `subirBuffer()` agregue automáticamente la extensión cuando el
-> `resourceType` es `raw` y el nombre no trae una. Los diplomas generados
-> _antes_ de este fix quedaron mal en Cloudinary y hay que regenerarlos
-> (borrar el documento `Diploma` viejo en Atlas y generar de nuevo).
-
-Uploads (/api/uploads)
-
-MétodoRutaRolDescripciónPOST/imagencoordinadora, adminmultipart/form-data, campo imagen → { url }
-
-Noticias (/api/noticias)
-
-MétodoRutaRolDescripciónGET/públicoTodas, con autor y comentarios pobladosGET/:idpúblicoDetallePOST/coordinadora, admin{ titulo, contenido, imagenUrl?, videoEmbedUrl? }PATCH/:idcoordinadora, adminEditarDELETE/:idcoordinadora, adminEliminarPOST/:id/likecualquier autenticadaTogglePOST/:id/comentarioscualquier autenticada{ texto }, se publica directoDELETE/:id/comentarios/:comentarioIdcoordinadora, adminEliminar comentario
-
-Testimonios (/api/testimonios)
-
-MétodoRutaRolDescripciónGET/públicoSolo activosGET/admincoordinadora, adminTodos (incluye inactivos)POST /, PATCH /:id, DELETE /:idcoordinadora, adminCRUD
-
-FAQ (/api/faqs) — mismo patrón que Testimonios
-
-Contenido de Página (/api/contenido) — NUEVO
-
-Cubre todo el texto/enlaces estáticos del sitio (Inicio, Acerca de Nosotros, Kit
-de Preparación, Contacto/redes) que antes vivía hardcodeado en el frontend. Con
-esto la fundadora edita el contenido de la página sin depender de un despliegue.
-
-MétodoRutaRolDescripciónGET/públicoTodos los bloques { clave, valor, tipo }GET/:clavepúblicoUn bloque específicoPOST/adminCrear un bloque nuevo { clave, valor, tipo } (para cuando se necesite uno que no existía)PATCH/:claveadminActualizar el valor de un bloque existente
-
-Claves iniciales sugeridas: `inicio_hero_titulo`, `inicio_hero_texto`,
-`acerca_de_historia`, `acerca_de_fundadora`, `kit_video_urls` (tipo `json`),
-`kit_libro_url`, `kit_intrant_url`, `contacto_telefono`, `contacto_email`,
-`contacto_direccion`, `redes_facebook`, `redes_instagram`, `redes_whatsapp`.
-
-> Noticias, testimonios, FAQ y comentarios ya tenían CRUD para coordinadora/admin
-> — eso ya estaba bien resuelto. Lo que faltaba era el contenido _estático_ de
-> las páginas públicas, que es lo que resuelve este módulo nuevo.
-
-Contabilidad (/api/contabilidad) — todo exclusivo de admin
-
-MétodoRutaDescripciónPOST/movimientos{ tipo, categoria, monto, descripcion?, fecha? }GET/movimientos?mes=&anio=&tipo=&categoria=Listar/filtrarPOST/balances/generar{ mes, anio } → recalcula, genera PDF, guarda (upsert por mes/año)GET/balancesHistorial completoGET/balances/:idUn balance específico
-
-Reglas de negocio ya implementadas (no reinventar en el frontend)
-
-Orden estricto de sesiones: no se puede desbloquear la sesión N+2 sin haber
-desbloqueado la N+1 primero.
-Máximo 3 intentos por sesión; el backend lo rechaza automáticamente al 4to.
-Nota mínima 70% para aprobar (calculado en el backend, no confiar en el frontend).
-Diploma requiere ProgresoEstudiante.cursoCompletado === true (las 3 aprobadas).
-Un pago confirmado genera automáticamente un MovimientoContable de tipo
-entrada/categoría inscripcion — el frontend de contabilidad no debe
-duplicar esto manualmente.
-Los balances mensuales son "upsert": generar de nuevo el mismo mes/año lo
-reemplaza (útil si se corrige un movimiento a posteriori).
-**NUEVO:** el examen se desbloquea automáticamente cuando la estudiante
-termina de ver todo el contenido activo de `contenidoSesion` de esa sesión —
-la coordinadora ya no tiene que desbloquearlo manualmente en el flujo normal
-(el endpoint manual sigue existiendo solo como excepción/override).
-
-Pendiente de implementar (NO existe todavía)
-
-Recuperación de contraseña ("olvidé mi contraseña", sin sesión) — requiere
-servicio de email, queda fuera de alcance por ahora. (Cambiar contraseña
-estando logueada SÍ existe: PATCH /api/auth/cambiar-password.)
-Paginación real en listados largos (noticias, movimientos) — hoy se listan
-todos sin límite salvo /api/usuarios que sí tiene límite de 50.
-Notificaciones (email/SMS) de ningún tipo.
-Contenido teórico real de las 3 sesiones (Ley 63-17 y buenas prácticas) —
-hoy son placeholders, se editan con PATCH /api/sesiones/:numero.
-
-Correcciones de esta sesión de revisión (antes de continuar codeando)
-
-Estos son los puntos que se detectaron como vacíos de lógica o inconsistencias
-y quedaron resueltos en este mismo documento (ver secciones correspondientes):
-
-1. recuperación del id del IntentoExamen por la estudiante, 2) inicialización
-   de sesionActualDesbloqueada al confirmar pago, 3) endpoint GET /inscripciones/me,
-2. asignación al azar de versión de examen + PATCH/DELETE para mantenerlas,
-3. endpoint de cambio de contraseña, 6) módulo de contenido de página editable,
-4. código de verificación de diploma con año dinámico (ver nota abajo).
-
-Nota — código de verificación de diploma: `verificationCode.js` debe generar
-el año con `new Date().getFullYear()`, no con `2026` hardcodeado. Revisar el
-archivo real y corregirlo si sigue fijo (los diplomas de prueba actuales usan
-`MAV-2026-000001`, lo cual es correcto solo porque coincide con el año real).
-
-Testing
-
-Antes de cualquier cambio importante: npm run dev local + probar con curl o
-Postman los endpoints tocados. El flujo completo (registro → inscripción → pago
-→ 3 sesiones → diploma → verificación) ya fue probado end-to-end exitosamente.
-
-## Actualización — Imágenes, material real, y saga completa del diploma
-
-**Contenido de Estudio por Sesión — campo nuevo:**
-`ContenidoSesion` ahora tiene `imagenUrl` (opcional, String) — una imagen de
-portada para cualquier tipo de material (video/pdf/enlace/texto), para hacer
-la lista de materiales más vistosa. Se sube con el mismo
-`POST /api/uploads/imagen` que ya usan Noticias/Testimonios. `crearContenido`
-y `editarContenido` ya la aceptan y la guardan.
-
-**Contenido de Página — dos campos nuevos de tipo imagen:**
-`acerca_de_historia_imagen` y `acerca_de_fundadora_imagen` (tipo `url`,
-subidas también vía `/api/uploads/imagen`). Además se agregaron
-`acerca_de_mision`, `acerca_de_vision` y `acerca_de_valores` (tipo `html`) —
-antes estos tres vivían hardcodeados con placeholders en el frontend, ahora
-son editables como el resto.
-
-**Diplomas — reescritura completa del flujo de descarga:**
-
-Cloudinary bloquea por defecto la entrega **pública** de archivos PDF/ZIP
-(medida de seguridad de la plataforma, no un bug nuestro) — por eso
-`urlPDF` daba `401` al abrirla directo, incluso después de corregir la
-extensión `.pdf`. No se encontró/activó el switch de esa restricción en el
-dashboard de Cloudinary, así que se resolvió sin depender de él:
-
-- `Diploma` (modelo) gana `publicIdCloudinary` (String) — el `public_id` real
-  en Cloudinary, guardado en el momento de generar el diploma.
-- `utils/cloudinaryUpload.js` gana `generarUrlDescargaFirmada(publicId,
-formato, resourceType)` — usa `cloudinary.utils.private_download_url()`
-  para generar una URL **firmada** con las credenciales de la cuenta. Una URL
-  firmada sí es entregada por Cloudinary aunque la pública esté restringida,
-  porque la restricción aplica a la entrega no autenticada, no a la firmada.
-- Nuevos endpoints, **sin `protegerRuta` estándar** porque aceptan el token
-  también por `?token=` en la query (un link `<a href>` de descarga no puede
-  mandar headers `Authorization`) — la verificación del token se hace a mano
-  dentro del controller con `jsonwebtoken`:
-  - `GET /api/diplomas/me/descargar` (estudiante, dueña del diploma)
-  - `GET /api/diplomas/:id/descargar` (coordinadora/admin)
-- Estos endpoints **no redirigen** al navegador a la URL firmada (eso dejaba
-  el archivo sin extensión reconocible otra vez) — el backend trae el PDF de
-  Cloudinary él mismo (`fetch`) y lo sirve directo con
-  `Content-Type: application/pdf` y `Content-Disposition` con el nombre de
-  archivo correcto.
-- **Respaldo para diplomas viejos:** si un `Diploma` no tiene
-  `publicIdCloudinary` guardado (generados antes de este cambio), el
-  controller lo deriva de `urlPDF` con una expresión regular, así que no hace
-  falta regenerar los diplomas ya existentes.
-
-**`utils/pdfGenerator.js` — varias correcciones de diseño y un bug de fuente:**
-
-- **Bug real:** `pdf-lib` con las fuentes estándar (`StandardFonts`) solo
-  soporta codificación `WinAnsi` (básicamente Windows-1252 / Latin-1). Un
-  símbolo `✓` en el texto hacía que `generarDiplomaPDF` lanzara
-  `WinAnsi cannot encode "✓"` y la generación completa fallaba — por eso un
-  diploma "generado" a veces no dejaba ningún documento `Diploma` creado. Se
-  quitó ese símbolo. Ojo con esto para cualquier texto futuro que se agregue
-  a un PDF con `pdf-lib`: emojis y símbolos "decorativos" fuera de
-  Windows-1252 rompen la generación (los acentos y ñ del español sí están
-  soportados, no son el problema).
-- El mismo bug apareció de nuevo con un carácter `★` para el sello de
-  autenticidad — se resolvió dibujando una estrella como **vector** con
-  `page.drawSvgPath()` en vez de un carácter de fuente.
-- Todo el layout del diploma se recalculó para depender de un único punto de
-  referencia (`yTitulo`), en vez de coordenadas fijas — antes, una línea
-  decorativa con posición fija quedaba mal ubicada (encima de otro texto)
-  cuando el logo no se cargaba y el layout se desplazaba.
-- Se quitó la cédula del cuerpo del diploma.
-- Se quitó la duplicación "Sesión 1: Sesión 1: ..." — los títulos de sesión
-  en la base ya incluyen el prefijo "Sesión N:", así que ya no se vuelve a
-  anteponer en el PDF.
-- Se agregó una frase mencionando la parte práctica del curso (impartida
-  fuera de la plataforma, presencial).
-- Se quitó la línea de "verificar en mujeresalvolanterd.com/...".
-- La firma ahora va en dos líneas (nombre / cargo).
-- Se agregó un sello de autenticidad: dos círculos concéntricos (dorado +
-  azul) con texto "CURSO APROBADO", una estrella vectorial, y "MAV·RD".
-
-**Scripts de siembra de contenido real (en `src/utils/`, se corren una sola
-vez cada uno):**
-
-- `seedMaterialReal.js` — puebla `contenidoSesion` con 13 materiales de
-  estudio reales (de los 13 documentos que la fundadora usa para enseñar),
-  organizados en las 3 sesiones. Necesita una carpeta `html/` con los 13
-  archivos HTML junto al script.
-- `seedExamenesReal.js` — puebla `examenes` con 9 versiones (3 por sesión,
-  10 preguntas cada una), verificadas/corregidas contra el contenido real ya
-  sembrado (algunas preguntas de los exámenes originales tenían datos que no
-  coincidían con el material de estudio real — se ajustaron a lo que dice el
-  material, no al revés).
-
-**CORS en producción:** el backend ya lee `FRONTEND_URL` desde una variable
-de entorno de Render para la lista de orígenes permitidos — hay que
-mantenerla actualizada si la URL de Vercel cambia (sin `/` al final).
-
-**Pendiente real:** el "me gusta" en comentarios de noticias (no en la
-noticia, en los comentarios individuales) — el modelo de comentario
-(`{ _id, userId, texto, fecha }`) no tiene ningún campo de likes. Si se
-decide implementarlo, hay que agregarlo al esquema y a un endpoint nuevo;
-todavía no se ha diseñado.
+```
+
+## Referencia de endpoints
+
+### Auth (`/api/auth`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| POST | `/registro` | público | Crea cuenta de estudiante |
+| POST | `/login` | público | `{ usuario, token }` |
+| GET | `/perfil` | autenticada | Datos del usuario del token actual |
+| PATCH | `/cambiar-password` | autenticada | `{ passwordActual, passwordNueva }` |
+
+### Usuarios (`/api/usuarios`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/?rol=&search=&activo=` | coordinadora, admin | Buscar usuarias (límite 50) |
+| POST | `/coordinadora` | admin | Crear cuenta de coordinadora |
+| PATCH | `/:id/estado` | admin | `{ activo: bool }` |
+| PATCH | `/:id/rol` | admin | `{ rol }` |
+
+### Configuración (`/api/configuracion`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/` | público | `{ precio_plan_normal, precio_plan_vip }` |
+| PATCH | `/:clave` | admin | `{ valor }` |
+
+Precios actuales: `precio_plan_normal: 1000`, `precio_plan_vip: 7000` (RD$).
+
+### Inscripciones (`/api/inscripciones`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| POST | `/` | coordinadora, admin | Flujo manual/efectivo — `{ userId, tipoPlan, monto }` |
+| POST | `/mia` | estudiante | **Auto-inscripción con voucher** — `{ tipoPlan, bancoEmisor, numeroReferencia, fechaDeposito, comprobanteUrl }`. El `monto` se calcula SIEMPRE en el backend desde `Configuracion`, nunca del body. Si la inscripción más reciente de la estudiante estaba `rechazado`, la actualiza (reenvío) en vez de crear una nueva |
+| GET | `/?estadoPago=` | coordinadora, admin | Listar (con datos de la estudiante poblados) |
+| GET | `/me` | estudiante | Su propia inscripción más reciente (o `null`) |
+| PATCH | `/:id/confirmar-pago` | coordinadora, admin | Marca `pagado`, crea `ProgresoEstudiante` (con `sesionActualDesbloqueada: 1`) y un `MovimientoContable` automático |
+| PATCH | `/:id/rechazar-pago` | coordinadora, admin | `{ motivo }` — marca `rechazado`, la estudiante puede reenviar |
+
+`estadoPago` tiene 4 valores: `pendiente` (flujo viejo/efectivo), `pendiente_verificacion`
+(voucher subido, por revisar), `pagado`, `rechazado`. `numeroReferencia` tiene
+índice único (sparse) — no se puede reusar el mismo comprobante en dos inscripciones.
+
+### Sesiones (`/api/sesiones`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/` | coordinadora, admin | Las 3 sesiones completas (gestión) |
+| GET | `/:numero` | estudiante | Solo si `numero <= sesionActualDesbloqueada` |
+| PATCH | `/:numero` | admin | Editar teoría/videos |
+
+### Exámenes (`/api/examenes`) — banco de preguntas
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| POST | `/` | coordinadora, admin | Crear versión: `{ sesionId, nombreVersion, preguntas: [10 exactas] }` |
+| GET | `/sesion/:sesionId` | coordinadora, admin | Versiones de esa sesión |
+| PATCH | `/:id` | coordinadora, admin | Editar preguntas/opciones/respuesta correcta |
+| DELETE | `/:id` | admin | Borrado lógico (`activo: false`) — nunca físico |
+| POST | `/:sesionId/desbloquear` | coordinadora, admin | Override manual (excepción, no el camino normal) |
+
+La asignación de versión de examen es **al azar** entre las activas de la sesión.
+La lógica real de desbloqueo (orden estricto, máx. 3 intentos, no duplicar intento
+activo) vive en `intentarDesbloquear()`, función interna de `examenController.js`
+reutilizada por 3 caminos: el override manual, el auto-desbloqueo de `contenidoSesion`,
+y el reintento de autoservicio de la estudiante.
+
+### Contenido de Estudio por Sesión (`/api/contenido-sesion`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/sesion/:sesionId` | estudiante, coordinadora, admin | Materiales activos |
+| GET | `/admin/sesion/:sesionId` | coordinadora, admin | Todos, incluidos inactivos |
+| POST | `/` | coordinadora, admin | `{ sesionId, titulo, tipo, url?, contenidoTexto?, orden?, imagenUrl? }` |
+| PATCH | `/:id` | coordinadora, admin | Editar |
+| DELETE | `/:id` | admin | Borrado lógico |
+| POST | `/:id/marcar-visto` | estudiante | Marca visto. Si con este ya vio TODO el contenido activo de la sesión, dispara `intentarDesbloquear()` automáticamente → `{ contenidoId, examenDesbloqueado }` |
+
+### Intentos de examen (`/api/intentos-examen`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/activo/:sesionId` | estudiante | Intento sin entregar más reciente (404 si no hay) |
+| GET | `/historial/:sesionId` | estudiante | Todos sus intentos de esa sesión |
+| POST | `/reintentar/:sesionId` | estudiante | Autoservicio: pide otro intento si reprobó y le quedan |
+| POST | `/:id/iniciar` | estudiante | Arranca timer, preguntas sin respuesta correcta |
+| POST | `/:id/entregar` | estudiante | `{ respuestas: [10 índices] }` → califica (≥70% aprueba) |
+| GET | `/:id/detalle` | estudiante | Correctas/incorrectas por pregunta, tras entregar |
+| GET | `/estudiante/:userId` | coordinadora, admin | Todos los intentos de una estudiante (para panel Estudiantes) |
+
+### Progreso (`/api/progreso`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/me` | estudiante | Su propio progreso |
+| GET | `/:userId` | coordinadora, admin | Progreso de una estudiante |
+
+### Diplomas (`/api/diplomas`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/me` | estudiante | Su propio diploma (404 si no generado) |
+| GET | `/elegibles` | coordinadora, admin | Curso completo sin diploma aún |
+| POST | `/:userId/generar` | coordinadora, admin | Genera PDF + código, sube a Cloudinary |
+| GET | `/verificar/:codigo` | público | Verificación pública |
+| GET | `/me/descargar?token=` | estudiante | Descarga firmada (token por query, no header) |
+| GET | `/:id/descargar?token=` | coordinadora, admin | Descarga firmada de cualquier diploma |
+
+Los endpoints de descarga sirven el PDF directamente con `Content-Type:
+application/pdf` (no redirigen a Cloudinary) porque Cloudinary bloquea la
+entrega pública de PDFs por defecto — se usa `generarUrlDescargaFirmada()`
+internamente y el backend hace `fetch` del archivo él mismo.
+
+### Uploads (`/api/uploads`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| POST | `/imagen` | coordinadora, admin, **estudiante** | multipart/form-data, campo `imagen` → `{ url }` |
+
+`estudiante` se agregó para que pueda subir su comprobante de pago desde
+`/inscripcion`. Es una ruta genérica compartida — si en el futuro se necesitan
+límites distintos de tamaño/tipo entre "comprobante" y "imagen de noticia",
+valdría la pena separarlas.
+
+### Noticias (`/api/noticias`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/` | público | Todas, con autor y comentarios poblados, paginado (`?page=&limit=`) |
+| GET | `/:id` | público | Detalle |
+| POST | `/` | coordinadora, admin | `{ titulo, contenido, imagenUrl?, videoEmbedUrl? }` |
+| PATCH | `/:id` | coordinadora, admin | Editar |
+| DELETE | `/:id` | coordinadora, admin | Eliminar |
+| POST | `/:id/like` | cualquier autenticada | Toggle |
+| POST | `/:id/comentarios` | cualquier autenticada | `{ texto }` |
+| DELETE | `/:id/comentarios/:comentarioId` | coordinadora, admin | Eliminar comentario |
+
+Pendiente real: "me gusta" en comentarios individuales (no en la noticia) —
+el esquema de comentario no tiene campo de likes todavía.
+
+### Testimonios (`/api/testimonios`) y FAQ (`/api/faqs`)
+Mismo patrón: `GET /` público (solo activos), `GET /admin` coordinadora/admin
+(incluye inactivos), `POST /`, `PATCH /:id`, `DELETE /:id` coordinadora/admin.
+
+### Contenido de Página (`/api/contenido`)
+| Método | Ruta | Rol | Descripción |
+|---|---|---|---|
+| GET | `/` | público | Todos los bloques `{ clave, valor, tipo }` |
+| GET | `/:clave` | público | Un bloque específico |
+| POST | `/` | admin | Crear bloque nuevo |
+| PATCH | `/:clave` | admin | Actualizar valor de un bloque existente |
+
+Cubre texto/imágenes estáticas de Inicio, Acerca de Nosotros, Kit de
+Preparación y Contacto — editable sin depender de un despliegue.
+
+### Contabilidad (`/api/contabilidad`) — todo exclusivo de admin
+| Método | Ruta | Descripción |
+|---|---|---|
+| POST | `/movimientos` | `{ tipo, categoria, monto, descripcion?, fecha? }` |
+| GET | `/movimientos?mes=&anio=&tipo=&categoria=` | Listar/filtrar, paginado |
+| POST | `/balances/generar` | `{ mes, anio }` → recalcula, genera PDF, guarda (upsert) |
+| GET | `/balances` | Historial completo |
+| GET | `/balances/:id` | Un balance específico |
+
+**Pendiente diseñado pero no aplicado:** rediseño visual del PDF de balance
+(tarjetas de totales + tabla) y fix de la descarga sin extensión `.pdf` vía
+`publicIdCloudinary` (mismo patrón que ya resolvió esto para diplomas) — el
+`contabilidadController.js` real hoy sigue siendo la versión sin estos cambios.
+El botón de descarga en `admin/contabilidad/page.tsx` sigue usando
+`href={b.urlPDF}` directo.
+
+## Reglas de negocio implementadas (no reinventar en el frontend)
+
+- Orden estricto de sesiones: no se desbloquea N+2 sin haber desbloqueado N+1.
+- Máximo 3 intentos por sesión; el backend rechaza automáticamente el 4to.
+- Nota mínima 70% para aprobar (calculado en backend).
+- Diploma requiere `ProgresoEstudiante.cursoCompletado === true`.
+- Pago confirmado → `MovimientoContable` automático (`entrada`/`inscripcion`).
+- Balances mensuales son "upsert" — regenerar el mismo mes/año lo reemplaza.
+- Examen se desbloquea automático al terminar todo el contenido de la sesión.
+
+## Pendiente de implementar (NO existe todavía)
+- Recuperación de contraseña sin sesión (requiere servicio de email).
+- Rate limiting en `/api/auth/login` y `/api/diplomas/verificar/:codigo`.
+- CORS con lista de orígenes separada por comas.
+- Monitoreo de errores en producción (ej. Sentry).
+- Confirmar backups automáticos en MongoDB Atlas (M0 free tier normalmente no los tiene).
+- Tests unitarios para `intentarDesbloquear()` — lógica más sensible del sistema, sin ningún test.
+- Notificaciones (email/SMS) de ningún tipo.
+- "Me gusta" en comentarios de noticias.
+
+## Testing
+`npm run dev` local + Postman/curl antes de cambios importantes. Flujo completo
+(registro → inscripción → pago → 3 sesiones → examen → diploma → verificación)
+ya probado end-to-end exitosamente, incluyendo el flujo nuevo de auto-inscripción
+con voucher (`POST /inscripciones/mia` → verificación → confirmar/rechazar).
