@@ -7,7 +7,9 @@ const { protegerRuta, permitirRoles } = require("../middleware/auth");
 router.post(
   "/imagen",
   protegerRuta,
-  permitirRoles("coordinadora", "admin"),
+  // "estudiante" se agregó para que pueda subir su comprobante de pago
+  // (voucher de depósito/transferencia) desde /inscripcion.
+  permitirRoles("coordinadora", "admin", "estudiante"),
   upload.single("imagen"),
   subirImagen,
 );
