@@ -2,6 +2,7 @@ const Inscripcion = require("../models/Inscripcion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const MovimientoContable = require("../models/MovimientoContable");
 const Configuracion = require("../models/Configuracion");
+const { notificarNuevoVoucher } = require("../utils/notificaciones");
 
 // POST /api/inscripciones — coordinadora/admin crea la inscripción de una estudiante
 async function crearInscripcion(req, res, next) {
@@ -248,6 +249,15 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
     } else {
       inscripcion = await Inscripcion.create(datosInscripcion);
     }
+
+    // Sin await a propósito: la notificación no debe demorar ni poner en
+    // riesgo la respuesta a la estudiante. Si Resend/Telegram fallan, se
+    // registra en consola dentro de notificarNuevoVoucher — nunca aquí.
+    notificarNuevoVoucher({
+      nombreEstudiante: `${req.usuario.nombre} ${req.usuario.apellido}`,
+      tipoPlan,
+      monto,
+    });
 
     res.status(201).json({ success: true, data: inscripcion });
   } catch (error) {
