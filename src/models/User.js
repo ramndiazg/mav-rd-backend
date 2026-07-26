@@ -23,19 +23,24 @@ const userSchema = new mongoose.Schema(
     },
     activo: { type: Boolean, default: true },
 
-    // --- NUEVO: verificación de email ---
+    // --- Verificación de email ---
     emailVerificado: { type: Boolean, default: false },
     tokenVerificacionEmail: { type: String, default: null },
     tokenVerificacionExpira: { type: Date, default: null },
+
+    // --- NUEVO: recuperación de contraseña ---
+    tokenRecuperacion: { type: String, default: null },
+    tokenRecuperacionExpira: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
-// Nunca devolver el hash de la contraseña en las respuestas JSON
+// Nunca devolver campos sensibles en las respuestas JSON
 userSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.passwordHash;
   delete obj.tokenVerificacionEmail;
+  delete obj.tokenRecuperacion;
   return obj;
 };
 

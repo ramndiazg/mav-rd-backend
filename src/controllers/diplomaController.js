@@ -9,6 +9,7 @@ const {
   subirBuffer,
   generarUrlDescargaFirmada,
 } = require("../utils/cloudinaryUpload");
+const { enviarCorreoDiplomaListo } = require("../utils/notificaciones");
 
 // GET /api/diplomas/elegibles — coordinadora/admin: estudiantes que completaron
 // el curso y todavía no tienen diploma generado
@@ -96,6 +97,13 @@ async function generarDiploma(req, res, next) {
       generadoPor: req.usuario._id,
       urlPDF: resultadoSubida.secure_url,
       publicIdCloudinary: resultadoSubida.public_id,
+    });
+
+    // Sin await a propósito: no debe demorar la respuesta a la coordinadora.
+    enviarCorreoDiplomaListo({
+      to: estudiante.email,
+      nombre: estudiante.nombre,
+      codigoVerificacion,
     });
 
     res.status(201).json({ success: true, data: diploma });
@@ -191,9 +199,6 @@ async function enviarDescargaFirmada(diploma, res) {
 
   const urlFirmada = generarUrlDescargaFirmada(publicId);
 
-  // En vez de redirigir al navegador (lo que dejaba el archivo sin
-  // extensión reconocible), el backend trae el PDF y lo sirve directo con
-  // las cabeceras correctas — así el navegador SIEMPRE lo reconoce como PDF.
   const respuestaCloudinary = await fetch(urlFirmada);
   if (!respuestaCloudinary.ok) {
     return res.status(502).json({

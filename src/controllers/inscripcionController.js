@@ -2,7 +2,12 @@ const Inscripcion = require("../models/Inscripcion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const MovimientoContable = require("../models/MovimientoContable");
 const Configuracion = require("../models/Configuracion");
-const { notificarNuevoVoucher } = require("../utils/notificaciones");
+const User = require("../models/User");
+const {
+  notificarNuevoVoucher,
+  enviarCorreoPagoConfirmado,
+  enviarCorreoPagoRechazado,
+} = require("../utils/notificaciones");
 
 // POST /api/inscripciones — coordinadora/admin crea la inscripción de una estudiante
 async function crearInscripcion(req, res, next) {
@@ -22,7 +27,6 @@ async function crearInscripcion(req, res, next) {
         .json({ success: false, error: 'tipoPlan debe ser "normal" o "vip".' });
     }
 
-    // Evitar inscripciones duplicadas activas para la misma estudiante
     const existente = await Inscripcion.findOne({
       userId,
       estadoPago: "pendiente",
@@ -64,10 +68,9 @@ async function confirmarPago(req, res, next) {
     inscripcion.estadoPago = "pagado";
     inscripcion.fechaPago = new Date();
     inscripcion.confirmadoPor = req.usuario._id;
-    inscripcion.notaRechazo = null; // por si venía de un rechazo previo
+    inscripcion.notaRechazo = null;
     await inscripcion.save();
 
-    // Al confirmar el pago, se habilita el progreso de la estudiante en el Aula Virtual.
     await ProgresoEstudiante.findOneAndUpdate(
       { userId: inscripcion.userId },
       {
@@ -79,7 +82,6 @@ async function confirmarPago(req, res, next) {
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );
 
-    // El pago confirmado se registra automáticamente como entrada contable
     await MovimientoContable.create({
       tipo: "entrada",
       categoria: "inscripcion",
@@ -90,14 +92,24 @@ async function confirmarPago(req, res, next) {
       registradoPor: req.usuario._id,
     });
 
+    // Sin await a propósito: no debe demorar la respuesta a la coordinadora.
+    User.findById(inscripcion.userId).then((estudiante) => {
+      if (estudiante) {
+        enviarCorreoPagoConfirmado({
+          to: estudiante.email,
+          nombre: estudiante.nombre,
+          tipoPlan: inscripcion.tipoPlan,
+        });
+      }
+    });
+
     res.json({ success: true, data: inscripcion });
   } catch (error) {
     next(error);
   }
 }
 
-// PATCH /api/inscripciones/:id/rechazar-pago — NUEVO: coordinadora/admin rechaza un
-// voucher (ej. monto no coincide, referencia inválida, comprobante ilegible).
+// PATCH /api/inscripciones/:id/rechazar-pago — coordinadora/admin rechaza un voucher
 async function rechazarPago(req, res, next) {
   try {
     const { id } = req.params;
@@ -128,6 +140,17 @@ async function rechazarPago(req, res, next) {
     inscripcion.notaRechazo = motivo.trim();
     await inscripcion.save();
 
+    // Sin await a propósito: no debe demorar la respuesta a la coordinadora.
+    User.findById(inscripcion.userId).then((estudiante) => {
+      if (estudiante) {
+        enviarCorreoPagoRechazado({
+          to: estudiante.email,
+          nombre: estudiante.nombre,
+          motivo: inscripcion.notaRechazo,
+        });
+      }
+    });
+
     res.json({ success: true, data: inscripcion });
   } catch (error) {
     next(error);
@@ -151,23 +174,21 @@ async function listarInscripciones(req, res, next) {
   }
 }
 
-// GET /api/inscripciones/me — la estudiante ve su propio estado de pago
+// GET /api/inscripciones/me — la estudiante ve su propia inscripción
 async function obtenerMiInscripcion(req, res, next) {
   try {
     const inscripcion = await Inscripcion.findOne({
       userId: req.usuario._id,
     }).sort({ createdAt: -1 });
 
-    // null es una respuesta válida: significa "todavía no te has inscrito"
     res.json({ success: true, data: inscripcion });
   } catch (error) {
     next(error);
   }
 }
 
-// POST /api/inscripciones/mia — NUEVO: la estudiante se auto-inscribe subiendo su
-// propio comprobante de depósito/transferencia. El monto SIEMPRE se calcula en el
-// backend desde Configuracion — nunca se confía en un monto que mande el cliente.
+// POST /api/inscripciones/mia — la estudiante se auto-inscribe subiendo su
+// propio comprobante de depósito/transferencia.
 async function crearOReenviarInscripcionPropia(req, res, next) {
   try {
     const userId = req.usuario._id;
@@ -207,7 +228,6 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
       });
     }
 
-    // Buscamos si ya tiene alguna inscripción (la más reciente)
     const actual = await Inscripcion.findOne({ userId }).sort({
       createdAt: -1,
     });
@@ -224,7 +244,6 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
       });
     }
 
-    // Precio real desde Configuracion — nunca desde el body
     const clave = tipoPlan === "vip" ? "precio_plan_vip" : "precio_plan_normal";
     const config = await Configuracion.findOne({ clave });
     if (!config) {
@@ -251,16 +270,12 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
 
     let inscripcion;
     if (actual && actual.estadoPago === "rechazado") {
-      // Reenvío: actualizamos la misma inscripción en vez de crear una duplicada
       Object.assign(actual, datosInscripcion);
       inscripcion = await actual.save();
     } else {
       inscripcion = await Inscripcion.create(datosInscripcion);
     }
 
-    // Sin await a propósito: la notificación no debe demorar ni poner en
-    // riesgo la respuesta a la estudiante. Si Resend/Telegram fallan, se
-    // registra en consola dentro de notificarNuevoVoucher — nunca aquí.
     notificarNuevoVoucher({
       nombreEstudiante: `${req.usuario.nombre} ${req.usuario.apellido}`,
       tipoPlan,

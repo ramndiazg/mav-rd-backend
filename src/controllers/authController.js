@@ -2,7 +2,10 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const User = require("../models/User");
-const { enviarCorreoVerificacion } = require("../utils/notificaciones");
+const {
+  enviarCorreoVerificacion,
+  enviarCorreoRecuperacion,
+} = require("../utils/notificaciones");
 
 function generarToken(userId) {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
@@ -10,7 +13,7 @@ function generarToken(userId) {
   });
 }
 
-function generarTokenVerificacion() {
+function generarTokenAleatorio() {
   return crypto.randomBytes(32).toString("hex");
 }
 
@@ -44,7 +47,7 @@ async function registro(req, res, next) {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const tokenVerificacionEmail = generarTokenVerificacion();
+    const tokenVerificacionEmail = generarTokenAleatorio();
     const tokenVerificacionExpira = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
 
     const nuevoUsuarioCreado = await User.create({
@@ -70,7 +73,6 @@ async function registro(req, res, next) {
       token: tokenVerificacionEmail,
     });
 
-    // Se vuelve a consultar excluyendo passwordHash antes de responder al frontend
     const nuevoUsuario = await User.findById(nuevoUsuarioCreado._id).select(
       "-passwordHash",
     );
@@ -127,7 +129,7 @@ async function reenviarVerificacion(req, res, next) {
     }
 
     const usuario = await User.findById(req.usuario._id);
-    usuario.tokenVerificacionEmail = generarTokenVerificacion();
+    usuario.tokenVerificacionEmail = generarTokenAleatorio();
     usuario.tokenVerificacionExpira = new Date(
       Date.now() + 24 * 60 * 60 * 1000,
     );
@@ -143,6 +145,87 @@ async function reenviarVerificacion(req, res, next) {
       success: true,
       data: { mensaje: "Correo de verificación reenviado." },
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /api/auth/olvide-password — público — { email }
+async function olvidePassword(req, res, next) {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res
+        .status(400)
+        .json({ success: false, error: "El correo es obligatorio." });
+    }
+
+    const usuario = await User.findOne({ email: email.toLowerCase() });
+
+    // Por seguridad, respondemos éxito igual exista o no la cuenta —
+    // así no se puede usar este endpoint para averiguar qué correos están
+    // registrados en el sistema.
+    if (usuario) {
+      usuario.tokenRecuperacion = generarTokenAleatorio();
+      usuario.tokenRecuperacionExpira = new Date(Date.now() + 60 * 60 * 1000); // 1h
+      await usuario.save();
+
+      await enviarCorreoRecuperacion({
+        to: usuario.email,
+        nombre: usuario.nombre,
+        token: usuario.tokenRecuperacion,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        mensaje:
+          "Si ese correo está registrado, te enviamos un link para restablecer tu contraseña.",
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /api/auth/restablecer-password — público — { token, passwordNueva }
+async function restablecerPassword(req, res, next) {
+  try {
+    const { token, passwordNueva } = req.body;
+
+    if (!token || !passwordNueva) {
+      return res.status(400).json({
+        success: false,
+        error: "token y passwordNueva son obligatorios.",
+      });
+    }
+
+    if (passwordNueva.length < 8) {
+      return res.status(400).json({
+        success: false,
+        error: "La nueva contraseña debe tener al menos 8 caracteres.",
+      });
+    }
+
+    const usuario = await User.findOne({
+      tokenRecuperacion: token,
+      tokenRecuperacionExpira: { $gt: new Date() },
+    });
+
+    if (!usuario) {
+      return res.status(400).json({
+        success: false,
+        error: "El link de recuperación es inválido o ya expiró.",
+      });
+    }
+
+    usuario.passwordHash = await bcrypt.hash(passwordNueva, 10);
+    usuario.tokenRecuperacion = null;
+    usuario.tokenRecuperacionExpira = null;
+    await usuario.save();
+
+    res.json({ success: true, data: { mensaje: "Contraseña actualizada." } });
   } catch (error) {
     next(error);
   }
@@ -245,4 +328,6 @@ module.exports = {
   cambiarPassword,
   verificarEmail,
   reenviarVerificacion,
+  olvidePassword,
+  restablecerPassword,
 };
