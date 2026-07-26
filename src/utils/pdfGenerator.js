@@ -111,7 +111,6 @@ async function generarDiplomaPDF({
     width,
   );
 
-  // Línea decorativa — ahora relativa a yTitulo, ya no se desalinea
   page.drawLine({
     start: { x: width / 2 - 130, y: yTitulo - 38 },
     end: { x: width / 2 + 130, y: yTitulo - 38 },
@@ -157,7 +156,6 @@ async function generarDiplomaPDF({
     width,
   );
 
-  // --- Detalle de las sesiones aprobadas (solo el título, sin repetir "Sesión N") ---
   const sesionesAMostrar =
     sesiones.length > 0
       ? sesiones
@@ -176,7 +174,6 @@ async function generarDiplomaPDF({
       yLinea -= 20;
     });
 
-  // Mención de la parte práctica (se imparte fuera de la plataforma)
   yLinea -= 10;
   dibujarTextoCentrado(
     page,
@@ -204,7 +201,6 @@ async function generarDiplomaPDF({
     width,
   );
 
-  // --- Firma (en dos líneas) ---
   const yFirmaLinea = 118;
   page.drawLine({
     start: { x: width / 2 - 110, y: yFirmaLinea },
@@ -231,7 +227,6 @@ async function generarDiplomaPDF({
     width,
   );
 
-  // --- Sello de autenticidad (círculo doble + estrella) ---
   const selloX = width - 130;
   const selloY = 145;
   page.drawEllipse({
@@ -268,8 +263,6 @@ async function generarDiplomaPDF({
     9,
     azul,
   );
-  // Estrella decorativa dibujada como vector (un carácter ★ real rompe la
-  // fuente estándar de pdf-lib, que solo soporta codificación WinAnsi)
   page.drawSvgPath(
     "M 0,6 L 1.41,1.94 L 5.71,1.85 L 2.28,-0.74 L 3.53,-4.85 L 0,-2.4 L -3.53,-4.85 L -2.28,-0.74 L -5.71,1.85 L -1.41,1.94 Z",
     { x: selloX, y: selloY - 8, color: dorado, scale: 1 },
@@ -284,7 +277,6 @@ async function generarDiplomaPDF({
     dorado,
   );
 
-  // --- Código de verificación (pie) ---
   page.drawText(`Código de verificación: ${codigoVerificacion}`, {
     x: 40,
     y: 40,
@@ -297,6 +289,7 @@ async function generarDiplomaPDF({
   return Buffer.from(pdfBytes);
 }
 
+// --- Balance mensual: rediseño "Opción A" (tarjetas de totales + tabla) ---
 async function generarBalancePDF({
   mes,
   anio,
@@ -307,16 +300,21 @@ async function generarBalancePDF({
 }) {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595, 842]); // A4 vertical
+  const { width, height } = page.getSize();
 
   const fontTitulo = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontTexto = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   const azul = rgb(0x1b / 255, 0x3a / 255, 0x6b / 255);
+  const azulClaro = rgb(0x4a / 255, 0x7f / 255, 0xc9 / 255);
   const rosa = rgb(0xd6 / 255, 0x33 / 255, 0x6c / 255);
   const gris = rgb(0.2, 0.2, 0.2);
+  const grisClaro = rgb(0.55, 0.55, 0.55);
   const verde = rgb(0x2f / 255, 0x9e / 255, 0x44 / 255);
+  const rojo = rgb(0.75, 0.2, 0.2);
+  const fondoClaro = rgb(0.97, 0.97, 0.98);
+  const fondoFilaAlterna = rgb(0.95, 0.96, 0.98);
 
-  const { width, height } = page.getSize();
   const nombresMeses = [
     "Enero",
     "Febrero",
@@ -332,80 +330,215 @@ async function generarBalancePDF({
     "Diciembre",
   ];
 
-  page.drawText("MUJERES AL VOLANTE R.D.", {
-    x: 40,
-    y: height - 60,
-    size: 18,
-    font: fontTitulo,
-    color: azul,
-  });
-  page.drawText("Balance Contable Mensual", {
-    x: 40,
-    y: height - 85,
-    size: 14,
-    font: fontTexto,
-    color: gris,
-  });
+  const formatoRD = (n) =>
+    `RD$ ${Number(n).toLocaleString("es-DO", { minimumFractionDigits: 2 })}`;
+
+  const margen = 40;
+
+  // --- Encabezado con logo ---
+  let yActual = height - 50;
+  if (fs.existsSync(RUTA_LOGO)) {
+    const logoBytes = fs.readFileSync(RUTA_LOGO);
+    const logoImg = await pdfDoc.embedPng(logoBytes);
+    const logoAlto = 45;
+    const logoAncho = (logoImg.width / logoImg.height) * logoAlto;
+    page.drawImage(logoImg, {
+      x: margen,
+      y: yActual - logoAlto + 8,
+      width: logoAncho,
+      height: logoAlto,
+    });
+    page.drawText("Muvo RD Vial", {
+      x: margen + logoAncho + 14,
+      y: yActual - 10,
+      size: 16,
+      font: fontTitulo,
+      color: azul,
+    });
+    page.drawText("Balance Contable Mensual", {
+      x: margen + logoAncho + 14,
+      y: yActual - 28,
+      size: 11,
+      font: fontTexto,
+      color: grisClaro,
+    });
+    yActual -= logoAlto + 20;
+  } else {
+    page.drawText("Muvo RD Vial", {
+      x: margen,
+      y: yActual,
+      size: 18,
+      font: fontTitulo,
+      color: azul,
+    });
+    page.drawText("Balance Contable Mensual", {
+      x: margen,
+      y: yActual - 22,
+      size: 11,
+      font: fontTexto,
+      color: grisClaro,
+    });
+    yActual -= 50;
+  }
+
   page.drawText(`${nombresMeses[mes - 1]} ${anio}`, {
-    x: 40,
-    y: height - 110,
+    x: margen,
+    y: yActual,
     size: 22,
     font: fontTitulo,
     color: rosa,
   });
+  yActual -= 45;
 
-  let y = height - 160;
-  const formatoRD = (n) =>
-    `RD$ ${Number(n).toLocaleString("es-DO", { minimumFractionDigits: 2 })}`;
+  // --- 3 tarjetas de totales, lado a lado ---
+  const anchoTarjeta = (width - margen * 2 - 24) / 3;
+  const altoTarjeta = 68;
+  const tarjetas = [
+    { etiqueta: "Total entradas", valor: totalEntradas, color: verde },
+    { etiqueta: "Total salidas", valor: totalSalidas, color: rojo },
+    {
+      etiqueta: "Saldo del mes",
+      valor: saldo,
+      color: saldo >= 0 ? azul : rojo,
+    },
+  ];
 
-  page.drawText(`Total de entradas: ${formatoRD(totalEntradas)}`, {
-    x: 40,
-    y,
-    size: 13,
-    font: fontTexto,
-    color: verde,
+  tarjetas.forEach((t, i) => {
+    const x = margen + i * (anchoTarjeta + 12);
+    page.drawRectangle({
+      x,
+      y: yActual - altoTarjeta,
+      width: anchoTarjeta,
+      height: altoTarjeta,
+      color: fondoClaro,
+      borderColor: rgb(0.88, 0.89, 0.91),
+      borderWidth: 1,
+    });
+    page.drawText(t.etiqueta, {
+      x: x + 12,
+      y: yActual - 22,
+      size: 9,
+      font: fontTexto,
+      color: grisClaro,
+    });
+    page.drawText(formatoRD(t.valor), {
+      x: x + 12,
+      y: yActual - 44,
+      size: 13,
+      font: fontTitulo,
+      color: t.color,
+    });
   });
-  y -= 22;
-  page.drawText(`Total de salidas: ${formatoRD(totalSalidas)}`, {
-    x: 40,
-    y,
+
+  yActual -= altoTarjeta + 40;
+
+  // --- Tabla de desglose por categoría, con columnas alineadas ---
+  page.drawText("Desglose por categoría", {
+    x: margen,
+    y: yActual,
     size: 13,
-    font: fontTexto,
-    color: rgb(0.8, 0.2, 0.2),
-  });
-  y -= 22;
-  page.drawText(`Saldo del mes: ${formatoRD(saldo)}`, {
-    x: 40,
-    y,
-    size: 15,
     font: fontTitulo,
     color: azul,
   });
+  yActual -= 22;
 
-  y -= 50;
-  page.drawText("Desglose por categoría:", {
-    x: 40,
-    y,
-    size: 13,
+  const colCategoria = margen;
+  const colEntradas = margen + 220;
+  const colSalidas = margen + 360;
+  const anchoTabla = width - margen * 2;
+  const altoFila = 22;
+
+  // Encabezado de la tabla
+  page.drawRectangle({
+    x: margen,
+    y: yActual - 16,
+    width: anchoTabla,
+    height: altoFila,
+    color: azulClaro,
+  });
+  page.drawText("Categoría", {
+    x: colCategoria + 8,
+    y: yActual - 10,
+    size: 9,
     font: fontTitulo,
-    color: gris,
+    color: rgb(1, 1, 1),
   });
-  y -= 25;
+  page.drawText("Entradas", {
+    x: colEntradas,
+    y: yActual - 10,
+    size: 9,
+    font: fontTitulo,
+    color: rgb(1, 1, 1),
+  });
+  page.drawText("Salidas", {
+    x: colSalidas,
+    y: yActual - 10,
+    size: 9,
+    font: fontTitulo,
+    color: rgb(1, 1, 1),
+  });
+  yActual -= altoFila;
 
-  Object.entries(desglosePorCategoria).forEach(([categoria, montos]) => {
-    page.drawText(
-      `${categoria}: entradas ${formatoRD(montos.entradas)} / salidas ${formatoRD(montos.salidas)}`,
-      { x: 55, y, size: 11, font: fontTexto, color: gris },
-    );
-    y -= 18;
+  const categorias = Object.entries(desglosePorCategoria || {});
+  categorias.forEach(([categoria, montos], i) => {
+    if (i % 2 === 1) {
+      page.drawRectangle({
+        x: margen,
+        y: yActual - 16,
+        width: anchoTabla,
+        height: altoFila,
+        color: fondoFilaAlterna,
+      });
+    }
+    const nombreCategoria =
+      categoria.charAt(0).toUpperCase() + categoria.slice(1);
+    page.drawText(nombreCategoria, {
+      x: colCategoria + 8,
+      y: yActual - 10,
+      size: 10,
+      font: fontTexto,
+      color: gris,
+    });
+    page.drawText(formatoRD(montos.entradas), {
+      x: colEntradas,
+      y: yActual - 10,
+      size: 10,
+      font: fontTexto,
+      color: verde,
+    });
+    page.drawText(formatoRD(montos.salidas), {
+      x: colSalidas,
+      y: yActual - 10,
+      size: 10,
+      font: fontTexto,
+      color: rojo,
+    });
+    yActual -= altoFila;
   });
+
+  if (categorias.length === 0) {
+    page.drawText("No hubo movimientos registrados este mes.", {
+      x: colCategoria + 8,
+      y: yActual - 10,
+      size: 10,
+      font: fontTexto,
+      color: grisClaro,
+    });
+  }
 
   page.drawText(`Generado el ${new Date().toLocaleDateString("es-DO")}`, {
-    x: 40,
+    x: margen,
     y: 40,
     size: 9,
     font: fontTexto,
-    color: gris,
+    color: grisClaro,
+  });
+  page.drawText("Muvo RD Vial — Embajadoras de la educación vial", {
+    x: margen,
+    y: 28,
+    size: 8,
+    font: fontTexto,
+    color: grisClaro,
   });
 
   const pdfBytes = await pdfDoc.save();

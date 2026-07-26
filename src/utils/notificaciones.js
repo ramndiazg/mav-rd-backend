@@ -220,8 +220,64 @@ async function enviarCorreoRecuperacion({ to, nombre, token }) {
   }
 }
 
+// --- Notificación interna: falta generar el balance del mes anterior ---
+async function notificarBalancePendiente({ mes, anio }) {
+  try {
+    const nombresMeses = [
+      "Enero",
+      "Febrero",
+      "Marzo",
+      "Abril",
+      "Mayo",
+      "Junio",
+      "Julio",
+      "Agosto",
+      "Septiembre",
+      "Octubre",
+      "Noviembre",
+      "Diciembre",
+    ];
+    const nombreMes = nombresMeses[mes - 1];
+
+    const destinatarios = await DestinatarioNotificacion.find({ activo: true });
+    const asunto = `Falta generar el balance de ${nombreMes} ${anio}`;
+    const urlPanel = `${process.env.FRONTEND_URL}/admin/contabilidad`;
+    const textoPlano = `Todavía no se ha generado el balance contable de ${nombreMes} ${anio}. Genéralo aquí: ${urlPanel}`;
+    const htmlEmail = plantillaCorreo({
+      titulo: "Balance mensual pendiente",
+      cuerpoHtml: `<p>Todavía no se ha generado el balance contable de <strong>${nombreMes} ${anio}</strong>.</p>`,
+      botonTexto: "Generar balance",
+      botonUrl: urlPanel,
+    });
+
+    await Promise.all(
+      destinatarios.map(async (d) => {
+        try {
+          if (d.tipo === "email") {
+            await enviarEmailResend({
+              to: d.valor,
+              subject: asunto,
+              html: htmlEmail,
+            });
+          } else if (d.tipo === "telegram") {
+            await enviarMensajeTelegram({ chatId: d.valor, texto: textoPlano });
+          }
+        } catch (err) {
+          console.error(
+            `No se pudo notificar a ${d.tipo}:${d.valor} —`,
+            err.message,
+          );
+        }
+      }),
+    );
+  } catch (err) {
+    console.error("Error notificando balance pendiente:", err.message);
+  }
+}
+
 module.exports = {
   notificarNuevoVoucher,
+  notificarBalancePendiente,
   enviarCorreoVerificacion,
   enviarCorreoPagoConfirmado,
   enviarCorreoPagoRechazado,

@@ -6,6 +6,9 @@ const {
   enviarCorreoVerificacion,
   enviarCorreoRecuperacion,
 } = require("../utils/notificaciones");
+const {
+  verificarYNotificarBalancePendiente,
+} = require("../utils/recordatorios");
 
 function generarToken(userId) {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
@@ -318,6 +321,10 @@ async function login(req, res, next) {
 
 // GET /api/auth/perfil — requiere estar autenticada
 async function perfil(req, res) {
+  // Sin await a propósito: no debe demorar la respuesta del perfil.
+  if (req.usuario.rol === "admin") {
+    verificarYNotificarBalancePendiente();
+  }
   res.json({ success: true, data: { usuario: req.usuario } });
 }
 

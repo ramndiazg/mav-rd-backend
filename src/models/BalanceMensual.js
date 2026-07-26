@@ -8,6 +8,10 @@ const balanceMensualSchema = new mongoose.Schema(
     totalSalidas: { type: Number, required: true },
     saldo: { type: Number, required: true },
     urlPDF: { type: String, required: true },
+    // NUEVO — mismo patrón que Diploma: necesario para generar URLs de
+    // descarga firmadas. Balances generados antes de este campo no lo
+    // tienen — el backend lo deriva de urlPDF como respaldo si falta.
+    publicIdCloudinary: { type: String, default: null },
     generadoAutomaticamente: { type: Boolean, default: true },
     generadoPor: {
       type: mongoose.Schema.Types.ObjectId,

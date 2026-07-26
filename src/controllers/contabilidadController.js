@@ -1,10 +1,14 @@
+const jwt = require("jsonwebtoken");
 const MovimientoContable = require("../models/MovimientoContable");
 const BalanceMensual = require("../models/BalanceMensual");
+const User = require("../models/User");
 const { generarBalancePDF } = require("../utils/pdfGenerator");
-const { subirBuffer } = require("../utils/cloudinaryUpload");
+const {
+  subirBuffer,
+  generarUrlDescargaFirmada,
+} = require("../utils/cloudinaryUpload");
 
 // POST /api/contabilidad/movimientos — admin registra un movimiento manual
-// (sueldos, materiales, transporte, publicidad, otro — o entradas manuales)
 async function crearMovimiento(req, res, next) {
   try {
     const { tipo, categoria, monto, descripcion, fecha } = req.body;
@@ -32,7 +36,6 @@ async function crearMovimiento(req, res, next) {
 }
 
 // GET /api/contabilidad/movimientos — admin, filtrable por mes/año/tipo/categoria
-// Query params nuevos: page, limit
 async function listarMovimientos(req, res, next) {
   try {
     const { mes, anio, tipo, categoria, page, limit } = req.query;
@@ -47,8 +50,6 @@ async function listarMovimientos(req, res, next) {
       filtro.fecha = { $gte: inicio, $lt: fin };
     }
 
-    // Antes esto traía TODOS los movimientos que calzaran con el filtro, sin
-    // límite — con meses/años acumulados esto solo iba a crecer. Ahora pagina.
     const paginaActual = Math.max(1, Number(page) || 1);
     const limite = Math.min(100, Math.max(1, Number(limit) || 20));
 
@@ -126,7 +127,6 @@ async function generarBalance(req, res, next) {
       filename: `balance-${anio}-${String(mes).padStart(2, "0")}-${Date.now()}`,
     });
 
-    // Si ya existía un balance guardado para ese mes, se reemplaza (regenerar)
     const balance = await BalanceMensual.findOneAndUpdate(
       { mes, anio },
       {
@@ -136,6 +136,7 @@ async function generarBalance(req, res, next) {
         totalSalidas: resumen.totalSalidas,
         saldo: resumen.saldo,
         urlPDF: resultadoSubida.secure_url,
+        publicIdCloudinary: resultadoSubida.public_id,
         generadoAutomaticamente: false,
         generadoPor: req.usuario._id,
         fechaGeneracion: new Date(),
@@ -174,10 +175,88 @@ async function obtenerBalance(req, res, next) {
   }
 }
 
+// Deriva el public_id (sin extensión) a partir de la URL pública guardada,
+// para los balances generados ANTES de guardar publicIdCloudinary. Mismo
+// patrón que ya usa diplomaController.js.
+function derivarPublicIdDeUrl(urlPDF) {
+  const match = urlPDF.match(/\/upload\/v\d+\/(.+?)(\.[a-zA-Z0-9]+)?$/);
+  return match ? match[1] : null;
+}
+
+// GET /api/contabilidad/balances/:id/descargar?token=... — admin
+// NUEVO: sirve el PDF directamente con las cabeceras correctas (en vez de
+// redirigir a la URL cruda de Cloudinary, que llegaba sin extensión
+// reconocible). Verifica el token manualmente porque este endpoint vive
+// fuera del middleware protegerRuta normal — un <a href> de descarga no
+// puede mandar el header Authorization, así que acepta ?token= por query,
+// igual que ya resolvimos para diplomas.
+async function descargarBalance(req, res, next) {
+  try {
+    const header = req.headers.authorization;
+    const token = header?.startsWith("Bearer ")
+      ? header.slice(7)
+      : req.query.token;
+    if (!token) {
+      return res.status(401).json({ success: false, error: "No autorizado." });
+    }
+
+    let usuario;
+    try {
+      const payload = jwt.verify(token, process.env.JWT_SECRET);
+      usuario = await User.findById(payload.id);
+    } catch {
+      return res
+        .status(401)
+        .json({ success: false, error: "Token inválido o expirado." });
+    }
+
+    if (!usuario || usuario.rol !== "admin") {
+      return res.status(401).json({ success: false, error: "No autorizado." });
+    }
+
+    const balance = await BalanceMensual.findById(req.params.id);
+    if (!balance) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Balance no encontrado." });
+    }
+
+    const publicId =
+      balance.publicIdCloudinary || derivarPublicIdDeUrl(balance.urlPDF);
+    if (!publicId) {
+      return res.status(500).json({
+        success: false,
+        error:
+          "No se pudo determinar el archivo en Cloudinary para este balance.",
+      });
+    }
+
+    const urlFirmada = generarUrlDescargaFirmada(publicId);
+    const respuestaCloudinary = await fetch(urlFirmada);
+    if (!respuestaCloudinary.ok) {
+      return res.status(502).json({
+        success: false,
+        error: "No se pudo obtener el PDF desde Cloudinary.",
+      });
+    }
+
+    const buffer = Buffer.from(await respuestaCloudinary.arrayBuffer());
+    const nombreArchivo = `balance-${balance.anio}-${String(balance.mes).padStart(2, "0")}.pdf`;
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${nombreArchivo}"`,
+    });
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   crearMovimiento,
   listarMovimientos,
   generarBalance,
   listarBalances,
   obtenerBalance,
+  descargarBalance,
 };
