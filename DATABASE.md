@@ -4,7 +4,10 @@
 > mujeresalvolante.rd4sofa.mongodb.net. Mongoose como ODM. Todas las
 > colecciones usan \_id (ObjectId) automático y createdAt/updatedAt
 > (timestamps automáticos de Mongoose), salvo que se indique lo contrario.
-> Refleja el estado real al 26/07/2026.
+> Refleja el estado real al 03/08/2026 — sin cambios de esquema desde la
+> versión anterior (26/07/2026). El único desarrollo de esta ventana fue
+> un backup manual externo a Atlas, que no toca el esquema — ver
+> HISTORIAL_MODIFICACIONES.md.
 
 ---
 

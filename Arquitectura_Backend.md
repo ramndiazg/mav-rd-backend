@@ -1,6 +1,6 @@
 # Arquitectura del Backend — mav-rd-backend
 
-> Refleja el estado REAL del código al 26/07/2026. Reemplaza la versión anterior
+> Refleja el estado REAL del código al 03/08/2026. Reemplaza la versión anterior
 > de este mismo archivo. Para el historial de cómo se llegó aquí, ver
 > `HISTORIAL_MODIFICACIONES.md`.
 
@@ -38,13 +38,22 @@ Solución (prioridad #1, pendiente de que la fundadora decida/actúe):
   (["http://localhost:3000", process.env.FRONTEND_URL]), no un solo string
   como se pensaba antes, pero sigue siendo una lista corta fija, no
   dinámica por comas en una sola variable.
+- FRONTEND_URL en Render: confirmado apuntando a
+  https://muvo-rd.vercel.app (la URL nueva, en la cuenta de Vercel de la
+  fundadora).
 - Repo: ramndiazg/mav-rd-backend en GitHub.
 - Correo: Resend (RESEND_API_KEY, RESEND_FROM), ver advertencia arriba.
 - Avisos internos: Telegram Bot API (TELEGRAM_BOT_TOKEN), sin
   restricciones de destinatario, funciona para cualquier chat_id.
+  TELEGRAM_BOT_TOKEN regenerado (el original había quedado expuesto en
+  texto plano durante la configuración) y actualizado en Render.
 - Seguridad pendiente: rotar JWT_SECRET, contraseña de MongoDB Atlas y
   secreto de Cloudinary, quedaron expuestos en conversaciones de chat en
   algún momento. Pendiente "cuando el proyecto sea definitivo".
+- Backup manual redundante (fuera de este repo, vive en la PC de Ramon):
+  usuario de solo lectura `backup_readonly` creado en Atlas Database
+  Access para este propósito. Ver HISTORIAL_MODIFICACIONES.md, entrada
+  del 31/07/2026, para el detalle completo del proceso.
 - Decisión tomada: no se integrará una pasarela de pago automática
   (Azul) por ahora, la auto-inscripción con voucher (ver más abajo) ya
   resuelve la necesidad real de que la estudiante se inscriba por su cuenta.
@@ -258,13 +267,18 @@ ese mes específico (marcador en Configuracion), se notifica una sola vez.
 ## Pendiente de implementar (NO existe todavía)
 
 - Dominio propio verificado en Resend, ver advertencia al inicio, prioridad #1.
+  Bloqueado hasta la próxima reunión con la fundadora (ella compra el
+  dominio en Vercel).
 - Rate limiting en /api/auth/login y /api/diplomas/verificar/:codigo.
 - CORS con lista de orígenes dinámica separada por comas.
 - Monitoreo de errores en producción (ej. Sentry).
-- Confirmar backups automáticos en MongoDB Atlas.
 - Tests unitarios para intentarDesbloquear().
 - "Me gusta" en comentarios de noticias.
-- Badge de conteo de "pendientes por verificar" en la tarjeta Pagos del panel.
+
+Nota sobre backups: Atlas M0 (gratis) NO ofrece backups automáticos —
+confirmado, no es un pendiente de "verificar" sino un hecho del tier.
+Se resolvió con un proceso manual externo a Atlas (Docker local +
+Dropbox cifrado), ver HISTORIAL_MODIFICACIONES.md.
 
 ## Testing
 
