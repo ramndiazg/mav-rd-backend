@@ -11,6 +11,20 @@ const {
 } = require("../utils/cloudinaryUpload");
 const { enviarCorreoDiplomaListo } = require("../utils/notificaciones");
 
+// GET /api/diplomas — coordinadora/admin: todos los diplomas generados
+// (para cruzar "tiene diploma" en el panel de estudiantes, mismo patrón
+// que ya se usa con GET /inscripciones)
+async function listarTodos(req, res, next) {
+  try {
+    const diplomas = await Diploma.find().select(
+      "userId codigoVerificacion fechaEmision",
+    );
+    res.json({ success: true, data: diplomas });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // GET /api/diplomas/elegibles — coordinadora/admin: estudiantes que completaron
 // el curso y todavía no tienen diploma generado
 async function listarElegibles(req, res, next) {
@@ -258,6 +272,7 @@ async function descargarDiplomaPorId(req, res, next) {
 }
 
 module.exports = {
+  listarTodos,
   listarElegibles,
   generarDiploma,
   verificarDiploma,

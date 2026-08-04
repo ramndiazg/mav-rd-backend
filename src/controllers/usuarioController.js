@@ -1,11 +1,12 @@
 const bcrypt = require("bcryptjs");
 const User = require("../models/User");
+const Diploma = require("../models/Diploma");
 
 // GET /api/usuarios — coordinadora/admin: buscar usuarias por rol/nombre/cedula/email
-// Query params: rol, search, activo, page, limit
+// Query params: rol, search, activo, conDiploma, page, limit
 async function listarUsuarios(req, res, next) {
   try {
-    const { rol, search, activo, page, limit } = req.query;
+    const { rol, search, activo, conDiploma, page, limit } = req.query;
     const filtro = {};
 
     if (rol) filtro.rol = rol;
@@ -19,6 +20,20 @@ async function listarUsuarios(req, res, next) {
         { cedula: regex },
         { email: regex },
       ];
+    }
+
+    // NUEVO — permite separar estudiantes con diploma (graduadas) de las que
+    // no (en curso), filtrando a nivel de base de datos en vez de en el
+    // frontend, para que la paginación (totalPaginas/totalDocumentos) salga
+    // correcta en ambos casos. conDiploma=true -> solo con diploma,
+    // conDiploma=false -> solo sin diploma.
+    if (conDiploma !== undefined) {
+      const diplomas = await Diploma.find().select("userId");
+      const idsConDiploma = diplomas.map((d) => d.userId);
+      filtro._id =
+        conDiploma === "true"
+          ? { $in: idsConDiploma }
+          : { $nin: idsConDiploma };
     }
 
     // Antes esto traía hasta 50 resultados de golpe, sin decir si había más.

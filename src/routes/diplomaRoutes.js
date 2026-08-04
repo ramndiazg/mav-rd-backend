@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const {
+  listarTodos,
   listarElegibles,
   generarDiploma,
   verificarDiploma,
@@ -22,6 +23,12 @@ router.get("/me", protegerRuta, permitirRoles("estudiante"), obtenerMiDiploma);
 router.get("/me/descargar", descargarMiDiploma);
 router.get("/:id/descargar", descargarDiplomaPorId);
 
+router.get(
+  "/",
+  protegerRuta,
+  permitirRoles("coordinadora", "admin"),
+  listarTodos,
+);
 router.get(
   "/elegibles",
   protegerRuta,
