@@ -1,6 +1,6 @@
 # Arquitectura del Backend — mav-rd-backend
 
-> Refleja el estado REAL del código al 04/08/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 07/08/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -14,174 +14,161 @@ cookies) + Cloudinary (archivos) + Resend (email) + Telegram Bot API
 - CORS: FRONTEND_URL en Render debe apuntar exactamente a la URL de
   Vercel (https://muvo-rd.vercel.app), sin `/` al final.
 - Variables de entorno relevantes: JWT_SECRET, JWT_EXPIRES_IN, Cloudinary
-  (cloud name/api key/secret), RESEND_API_KEY, TELEGRAM_BOT_TOKEN
-  (regenerado el 03/08/2026 tras quedar expuesto en texto plano durante la
-  config original — no reusar el token viejo si aparece en algún log
-  antiguo).
-- **Bloqueante actual:** Resend usa el dominio de pruebas
+  (cloud name/api key/secret), RESEND_API_KEY, TELEGRAM_BOT_TOKEN,
+  MONGODB_URI (o MONGO_URI, según el .env real — los scripts de
+  mantenimiento en `scripts/` prueban ambos nombres).
+- **Bloqueante actual, sin cambios:** Resend usa el dominio de pruebas
   (onboarding@resend.dev), que solo entrega a la dirección dueña de la
-  cuenta de Resend — confirmado por 403 en el log real de Resend para
-  cualquier otro destinatario. Ningún correo a una estudiante real llega
-  todavía. Requiere que la fundadora compre y verifique un dominio propio
-  en su cuenta de Vercel (manual paso a paso ya entregado). Prioridad #1
-  antes de invitar estudiantes reales.
+  cuenta de Resend. Requiere que la fundadora compre y verifique un
+  dominio propio en su cuenta de Vercel. Prioridad #1 antes de invitar
+  estudiantes reales — sigue bloqueado hasta la reunión con ella.
+
+## Audiencia del curso (cambio de alcance, 06/08/2026)
+
+El curso **ya no es exclusivo para mujeres** — a partir de esta fecha
+también está dirigido a adolescentes de ambos sexos. El backend en sí
+nunca tuvo lógica específica de género (roles, validaciones y modelos son
+neutros desde el inicio), así que este cambio no tocó ninguna colección
+ni controller. El impacto real está en el frontend (copy, textos de
+marketing) — ver ARQUITECTURA_FRONTEND.md. Cualquier contenido nuevo
+(exámenes, material de estudio, comunicaciones) que se redacte de ahora
+en adelante debe usar lenguaje neutral, no dirigido a un género
+específico.
 
 ## Autenticación y roles
 
 - JWT propio (sin cookies) — cada request protegido manda
   `Authorization: Bearer <token>` a mano desde el frontend.
 - 3 roles: `estudiante`, `coordinadora`, `admin` (la fundadora, María Díaz
-  Guzmán).
+  Guzmán — cuenta real: `maria@test.com`).
 - `middleware/auth.js`: `protegerRuta` (requiere token válido) y
   `permitirRoles(...roles)` (restringe por rol).
-- Login rechaza con 403 si `usuario.activo` es `false` — una cuenta
-  archivada no puede iniciar sesión (ver sección de Usuarios abajo).
+- Login rechaza con 403 si `usuario.activo` es `false`.
 
 ### Auth (/api/auth)
 
-- POST /registro — cuenta gratuita de estudiante, dispara correo de
-  verificación (sin await, no bloquea la respuesta).
-- GET /verificar-email?token=... — público, viene de un link de correo.
-- POST /reenviar-verificacion — requiere estar logueada.
-- POST /olvide-password — público, siempre responde éxito exista o no la
-  cuenta (no revela qué correos están registrados).
-- POST /restablecer-password — público, con token de 1h de vigencia.
-- PATCH /cambiar-password — autenticada, requiere la contraseña actual.
-- POST /login — rechaza con 403 si la cuenta está desactivada.
-- GET /perfil — autenticada. Si el rol es admin, dispara (sin await) la
-  verificación de balance mensual pendiente.
+Sin cambios desde la versión anterior — registro, verificación de email,
+recuperación de contraseña, login con rechazo por cuenta desactivada.
 
 ## Usuarios (/api/usuarios)
 
-- GET / (coordinadora, admin) — listar por rol/búsqueda, con paginación
-  real (page/limit, máx. 100 por página). Query params: `rol`, `search`
-  (regex sobre nombre/apellido/cedula/email), `activo` (true/false),
-  `conDiploma` (NUEVO 04/08/2026 — true/false, filtra cruzando contra la
-  colección `Diploma` **a nivel de base de datos**, no en el frontend,
-  para que la paginación salga exacta en cada pestaña del panel de
-  estudiantes), `page`, `limit`.
-- PATCH /:id/estado (admin) — activa/desactiva una cuenta (`activo`
-  true/false). Usado por el panel de estudiantes para archivar/reactivar.
-- PATCH /:id/rol (admin) — cambia el rol de una cuenta (caso excepcional).
-- POST /coordinadora (admin) — crea directamente una cuenta de
-  coordinadora.
+Sin cambios de esquema ni de endpoints desde la versión anterior.
 
 ## Sesiones, contenido y exámenes
 
-- `Sesion`: numeradas 1-3, orden estricto (no se puede tomar el examen de
-  la N sin haber aprobado la N-1).
-- **`ContenidoSesion`**: material de estudio por sesión, con
-  `activo: Boolean`. Patrón de soft delete maduro desde antes de esta
-  sesión — nunca se borra físico:
-  - GET /contenido-sesion/sesion/:sesionId (cualquier autenticada) — solo
-    `activo: true`, es lo que ve la estudiante.
-  - GET /contenido-sesion/admin/sesion/:sesionId (coordinadora/admin) —
-    todos, incluidos inactivos.
-  - POST/PATCH — crear/editar, PATCH admite tocar `activo` directo.
-  - DELETE /:id (admin) — soft delete puro (`activo = false`).
-  - POST /:id/marcar-visto (estudiante) — al completar TODO el contenido
-    **activo** de una sesión (desactivar contenido viejo no deja a nadie
-    con progreso colgado), intenta desbloquear el examen automáticamente
-    vía `intentarDesbloquear` (ver abajo). Si hay espera de 24h activa,
-    responde `esperaActiva: true` sin que sea un error — el contenido
-    igual queda marcado como visto.
-- **`Examen`**: versiones de examen por sesión, con `activo: Boolean`.
-  Mismo patrón maduro, confirmado el 04/08/2026 sin necesidad de tocar
-  nada:
-  - POST /examenes (coordinadora/admin) — crea una nueva versión.
-  - GET /examenes/sesion/:sesionId (coordinadora/admin) — solo versiones
-    activas.
-  - PATCH /examenes/:id — editar nombre/preguntas (exactamente 10).
-  - DELETE /examenes/:id (admin) — soft delete puro (`activo = false`),
-    nunca borra físico — preserva la integridad de `IntentoExamen` viejos
-    que apuntan a esa versión.
-  - Pueden existir **varias versiones activas a la vez** para la misma
-    sesión — `intentarDesbloquear` elige una al azar entre las activas al
-    crear un intento nuevo. Desactivar una versión vieja al publicar una
-    nueva es una acción manual (DELETE), no automática.
+### `Sesion` — límite ampliado de 3 a 4 (06/08/2026)
+
+```js
+numero: { type: Number, required: true, unique: true, min: 1, max: 4 },
+```
+
+Antes tenía `max: 3` — este era el verdadero límite duro del sistema:
+Mongo rechazaba cualquier intento de crear una Sesión 4 antes de que el
+resto de la lógica (que ya era genérica) llegara a evaluarla.
+
+### ⚠️ Hueco descubierto esta sesión: no existe `POST /sesiones`
+
+`sesionController.js` solo expone tres operaciones:
+
+- `listarSesiones` (GET /, coordinadora/admin) — lista completa.
+- `obtenerSesionParaEstudiante` (GET /:numero, estudiante) — solo si tiene
+  acceso desbloqueado.
+- `actualizarSesion` (PATCH /:numero, admin) — **edita** una sesión que ya
+  existe (`findOneAndUpdate` por `numero`); si no existe, devuelve 404.
+
+**No hay ningún endpoint para crear una sesión nueva.** Las 3 sesiones
+originales se crearon directo en Atlas, a mano — nunca hubo un camino de
+API para esto. Se reveló al purgar la base de datos (ver más abajo) y
+quedarse sin ninguna sesión: el panel de coordinadora no tenía forma de
+recrearlas.
+
+**Solución pragmática adoptada:** un script de terminal
+(`scripts/crearSesionesIniciales.js`, ver abajo) en vez de construir un
+endpoint nuevo — es una operación que se hace una vez (crear las 4
+sesiones), no una función que la coordinadora vaya a necesitar seguido.
+Si en el futuro hace falta crear sesiones desde el panel con frecuencia,
+ahí sí valdría la pena un `POST /sesiones` real.
+
+**Relacionado, también pendiente:** el panel de coordinadora tampoco
+tiene un formulario para _renombrar_ una sesión — el backend sí lo
+permite (`PATCH /sesiones/:numero` acepta `titulo`), pero el frontend no
+tiene ninguna pantalla que lo use. Cuando se decidan los 4 temas reales,
+alguien va a tener que renombrarlas con una petición manual (Postman/
+Thunder Client) hasta que se construya ese formulario — decisión
+pospuesta a propósito, se retoma más adelante.
+
+### `ContenidoSesion` y `Examen`
+
+Sin cambios de esquema — el patrón de soft delete (`activo: Boolean`)
+sigue igual que antes. Ver DATABASE.md: ambas colecciones quedaron
+**vacías** tras la purga del 06/08/2026, pendientes de contenido real.
 
 ### `intentarDesbloquear()` — lógica compartida de desbloqueo del EXAMEN
 
-Vive en `examenController.js`, exportada y reusada desde
-`contenidoSesionController.js` e `intentoExamenController.js`. La llaman
-tres caminos distintos: la coordinadora manual (con
-`esOverrideManual: true`, se salta la espera de 24h), el sistema
-automático al completar el contenido de una sesión, y la propia
-estudiante vía autoservicio una vez cumplida la espera.
+Sin cambios de comportamiento — sigue validando orden estricto contra
+`sesionesAprobadas`, máximo 3 intentos, espera de 24h, etc. Nunca tuvo el
+número de sesiones quemado, así que generaliza sola a 4 sesiones sin
+tocarla.
 
-Reglas que aplica, en orden: sesión existe → progreso existe (pago
-confirmado) → orden estricto de sesiones (`sesionesAprobadas`) → máximo 3
-intentos por sesión → si ya hay un intento sin entregar, lo devuelve tal
-cual en vez de duplicar → espera mínima de 24h desde que aprobó la sesión
-anterior (solo aplica al primer intento de una sesión que no sea la 1, y
-solo si no es override manual) → elige una versión de examen activa al
-azar → crea el `IntentoExamen`.
+### `entregarIntento()` (`intentoExamenController.js`) — actualizado a 4 sesiones (06/08/2026)
 
-**Separación de responsabilidades importante:** esta función SOLO decide
-si se puede crear un intento de examen. El acceso a la TEORÍA de la
-siguiente sesión (`progreso.sesionActualDesbloqueada`) se adelanta
-inmediatamente al aprobar un examen, dentro de `entregarIntento`
-(`intentoExamenController.js`) — no aquí. El orden para efectos del
-EXAMEN se valida contra `sesionesAprobadas`, no contra
-`sesionActualDesbloqueada`.
+Tres números que antes decían `3` ahora dicen `4`:
+
+```js
+const siguienteSesion = Math.min(sesionDoc.numero + 1, 4); // antes: 3
+if (sesionDoc.numero < 4) { ... }                          // antes: 3
+if (progreso.sesionesAprobadas.length >= 4) {               // antes: 3
+  progreso.cursoCompletado = true;
+}
+```
+
+`cursoCompletado` ahora solo se activa después de aprobar las 4 sesiones,
+no 3.
 
 ## Diplomas (/api/diplomas)
 
-- POST /:userId/generar (coordinadora/admin) — genera el PDF (pdf-lib),
-  lo sube a Cloudinary, y dispara (sin await) un correo a la estudiante
-  con el código de verificación y link a /diploma.
-- GET /elegibles (coordinadora/admin) — estudiantes con
-  `progreso.cursoCompletado: true` que todavía no tienen diploma.
-- **GET / (NUEVO 04/08/2026)** (coordinadora/admin) — `listarTodos`, todos
-  los diplomas generados (`{ userId, codigoVerificacion, fechaEmision }`).
-  Usado por el panel de estudiantes para cruzar "tiene diploma" (pestaña
-  Graduadas) — mismo patrón que ya se usaba con `GET /inscripciones` para
-  cruzar estados de pago en el frontend.
-- GET /verificar/:codigo — público, sin login, usado por
-  /verificar-diploma.
-- GET /me (estudiante) — su propio diploma.
-- GET /me/descargar y GET /:id/descargar — descarga firmada desde
-  Cloudinary. **No usan `protegerRuta`** porque aceptan el token también
-  por `?token=` en vez de solo el header (un `<a href>` de descarga no
-  puede mandar headers personalizados) — la verificación se hace a mano
-  con `obtenerUsuarioDesdeToken()` dentro del controller.
-- `derivarPublicIdDeUrl()`: para diplomas generados antes de que existiera
-  el campo `publicIdCloudinary`, deriva el public_id desde la URL guardada
-  como respaldo.
+Sin cambios de backend en esta sesión — el diploma compartible en redes
+(imagen generada con `<canvas>`) es 100% frontend, ver
+ARQUITECTURA_FRONTEND.md. Nada de esto tocó `diplomaController.js`.
 
 ## Inscripciones y pagos
 
-Sin cambios en esta sesión. Dos flujos conviven en el mismo esquema
-(`Inscripcion`): manual (coordinadora crea + confirma efectivo) y
-auto-inscripción con voucher (la estudiante sube su propio comprobante,
-bloqueado si su email no está verificado). Pasarela de pago automática
-(Azul): decisión cerrada, no se implementará — el flujo manual con
-voucher ya resuelve la necesidad real.
+Sin cambios en esta sesión.
 
 ## Sistema de notificaciones (internas)
 
-Sin cambios en esta sesión. `destinatariosNotificacion` (CRUD admin) más
-`utils/notificaciones.js` con plantilla de correo compartida (logo +
-colores de marca) para 6 tipos de correo: verificación de cuenta, pago
-confirmado, pago rechazado (con motivo), diploma listo, recuperación de
-contraseña, y el recordatorio de balance mensual pendiente (con marcador
-en `Configuracion` para no repetir el aviso sobre el mismo mes, ya que no
-hay cron real — Render se duerme en el tier free, así que esto se revisa
-cada vez que un admin abre la app vía `GET /auth/perfil`). Avisos internos
-de voucher nuevo también van por Telegram Bot API.
+Sin cambios en esta sesión.
+
+## Scripts de mantenimiento (`scripts/`, NUEVO 06/08/2026)
+
+Carpeta nueva, a la altura de `src/`, para operaciones de datos que se
+hacen por terminal — nunca desde un endpoint de la API, siguiendo la
+misma decisión que ya existía para la purga de datos de prueba.
+
+- **`purgarDatosPrueba.js`**: borra todo excepto la cuenta admin
+  (`maria@test.com`) — usuarios, sesiones, exámenes, contenido de
+  estudio, intentos de examen, progreso de estudiante, inscripciones y
+  diplomas. Modo dry-run por defecto (solo cuenta, no borra), requiere
+  `--confirmar` + escribir `BORRAR` a mano para ejecutar de verdad. **Ya
+  se corrió el 06/08/2026** — ver DATABASE.md para los conteos exactos
+  purgados.
+- **`crearSesionesIniciales.js`**: crea las sesiones 1-4 con títulos
+  provisionales ("Sesión 1"..."Sesión 4"), para poder probar
+  contenido/exámenes mientras se definen los temas reales. Mismo patrón
+  dry-run + `--confirmar`. **Creado pero todavía no ejecutado** — pendiente
+  para la próxima sesión de trabajo.
+
+Ambos requieren `MONGODB_URI` (o `MONGO_URI`) en el `.env` del backend y
+reusan los modelos reales de `src/models/`, no queries genéricas sueltas.
 
 ## Notas de diseño
 
 - Ningún borrado es físico donde importa la integridad histórica: `Examen`,
   `ContenidoSesion` y `User` (vía `activo`) son siempre soft delete.
-  `Diploma` no tiene ni necesita soft delete — es un documento de emisión,
-  no algo que se "desactive".
+  `Diploma` no tiene ni necesita soft delete.
 - La purga real de datos de prueba se hace por terminal, directo a Mongo,
-  nunca desde una función de UI — decisión tomada a propósito por el
-  riesgo de que un hard delete genérico rompa diplomas ya emitidos
-  (públicamente verificables en /verificar-diploma). Ver
-  HISTORIAL_MODIFICACIONES.md para el detalle de qué colecciones debe
-  tocar en cascada cuando se retome.
+  nunca desde una función de UI — decisión que ya existía y que ahora
+  tiene script formal reutilizable (ver arriba).
 
 ## Pendiente real (backend)
 
@@ -189,9 +176,16 @@ de voucher nuevo también van por Telegram Bot API.
   reunión con la fundadora).
 - Terminar Telegram para el celular de la fundadora (`chat_id`, bloqueado
   hasta la misma reunión).
-- Diploma compartible en redes: **no requiere cambios de backend**, es
-  100% frontend (ver ARQUITECTURA_FRONTEND.md y
-  HISTORIAL_MODIFICACIONES.md para el diseño acordado).
+- Correr `scripts/crearSesionesIniciales.js --confirmar` para recrear las
+  4 sesiones (con títulos provisionales) y poder retomar la carga de
+  contenido.
+- Definir los 4 temas reales del curso con la fundadora, y renombrar las
+  sesiones (por ahora, a mano vía `PATCH /sesiones/:numero`; considerar
+  construir un formulario en el panel si esto se vuelve frecuente).
+- Subir `ContenidoSesion` y crear versiones de `Examen` reales para las 4
+  sesiones — todo quedó vacío tras la purga.
+- Decidir si vale la pena construir `POST /sesiones` (crear sesión desde
+  el panel) o si el script de terminal es suficiente a largo plazo.
 - Recordatorios por correo (examen disponible / voucher sin seguimiento):
   ideas a futuro, sin diseñar, falta resolver el disparador sin cron real.
 - Seguridad/confiabilidad: rotar credenciales expuestas, rate limiting en
