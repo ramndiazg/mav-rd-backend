@@ -280,21 +280,22 @@ async function entregarIntento(req, res, next) {
           }
 
           // Adelanta el acceso a la teoría de la siguiente sesión de
-          // inmediato (máximo 3, no hay Sesión 4).
-          const siguienteSesion = Math.min(sesionDoc.numero + 1, 3);
+          // inmediato (máximo 4, no hay Sesión 5). Ampliado de 3 a 4 el
+          // 06/08/2026 — ver HISTORIAL_MODIFICACIONES.md.
+          const siguienteSesion = Math.min(sesionDoc.numero + 1, 4);
           if (siguienteSesion > progreso.sesionActualDesbloqueada) {
             progreso.sesionActualDesbloqueada = siguienteSesion;
           }
 
           // Solo hay "próxima sesión" con espera si no era ya la última.
-          if (sesionDoc.numero < 3) {
+          if (sesionDoc.numero < 4) {
             proximaSesionDisponibleEn = new Date(
               fechaAprobacion.getTime() + 24 * 60 * 60 * 1000,
             );
           }
         }
 
-        if (progreso.sesionesAprobadas.length >= 3) {
+        if (progreso.sesionesAprobadas.length >= 4) {
           progreso.cursoCompletado = true;
         }
         await progreso.save();
