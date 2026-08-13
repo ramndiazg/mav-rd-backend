@@ -4,25 +4,25 @@
 > mujeresalvolante.rd4sofa.mongodb.net (versión real confirmada: 8.0.29).
 > Mongoose como ODM. Todas las colecciones usan \_id (ObjectId) automático
 > y createdAt/updatedAt (timestamps automáticos de Mongoose), salvo que se
-> indique lo contrario. Refleja el estado real al 07/08/2026.
+> indique lo contrario. Refleja el estado real al 13/08/2026.
 
 ---
 
-## ⚠️ Evento importante: purga completa de datos de prueba (06/08/2026)
+## Purga completa de datos de prueba (06/08/2026) — para referencia histórica
 
 Se corrió `scripts/purgarDatosPrueba.js` (backend) en modo real. Conteos
-purgados, para referencia histórica:
+purgados:
 
 | Colección             | Documentos borrados |
-| --------------------- | ------------------- |
-| users (excepto admin) | 17                  |
-| sesiones              | 3                   |
-| examenes              | 15                  |
-| contenidoSesion       | 22                  |
-| intentosExamen        | 30                  |
-| progresoEstudiante    | 11                  |
-| inscripciones         | 13                  |
-| diplomas              | 6                   |
+| --------------------- | -------------------- |
+| users (excepto admin) | 17                   |
+| sesiones              | 3                    |
+| examenes              | 15                   |
+| contenidoSesion       | 22                   |
+| intentosExamen        | 30                   |
+| progresoEstudiante    | 11                   |
+| inscripciones         | 13                   |
+| diplomas              | 6                    |
 
 **Sobrevivió únicamente** la cuenta `maria@test.com` (rol `admin`).
 
@@ -31,11 +31,12 @@ purgados, para referencia histórica:
 `movimientosContables`, `balancesMensuales` — ninguna depende de
 estudiantes ni de sesiones.
 
-**Estado actual de las colecciones purgadas: vacías.** `sesiones`,
-`examenes` y `contenidoSesion` en particular quedaron en 0 documentos —
-hasta correr `scripts/crearSesionesIniciales.js` (creado, todavía sin
-ejecutar), la app no tiene ninguna sesión, lo cual es intencional
-mientras se define el contenido real de las 4 sesiones nuevas.
+**Actualización (13/08/2026): `sesiones` ya no está vacía.**
+`scripts/crearSesionesIniciales.js --confirmar` se ejecutó — las 4
+sesiones existen con títulos provisionales ("Sesión 1"..."Sesión 4").
+`examenes` y `contenidoSesion` **siguen vacías** — ese script solo crea
+las sesiones, no contenido ni exámenes; esos se cargan aparte una vez
+definidos los temas reales.
 
 ---
 
@@ -67,17 +68,25 @@ mientras se define el contenido real de las 4 sesiones nuevas.
 
 ## 2. inscripciones — sin cambios de esquema
 
-Sin cambios. Ver ARQUITECTURA_BACKEND.md para el detalle de los dos
-flujos de pago.
+`tipoPlan` (`"normal" | "vip"`) sigue siendo la única diferencia
+estructurada entre planes — la teoría es la misma para ambos, la
+diferencia real es la práctica de manejo (ver ARQUITECTURA_BACKEND.md).
+Ver ese mismo archivo para el detalle de los dos flujos de pago.
 
-## 3. configuracion (key-value) — sin cambios
+## 3. configuracion (key-value) — sin cambios de esquema
 
-## 4. sesiones — límite ampliado de 3 a 4 (06/08/2026)
+Incluye `precio_plan_normal` y `precio_plan_vip` — ya se leían desde
+`/inscripcion`, y desde el 13/08/2026 también se leen en el home público
+(`GET /api/configuracion`, sin auth) para mostrar los precios ahí. **No
+hay todavía una UI de admin para editarlos** — se cambian a mano en
+Atlas (ver pendientes en ARQUITECTURA_BACKEND.md).
+
+## 4. sesiones — ya recreada tras la purga (13/08/2026)
 
 ```js
 {
   _id: ObjectId,
-  numero: Number,   // único, 1 a 4 (antes: 1 a 3)
+  numero: Number,   // único, 1 a 4
   titulo: String,
   teoria: String,   // HTML/Markdown
   videos: [{ titulo: String, url: String }],
@@ -86,13 +95,12 @@ flujos de pago.
 }
 ```
 
-**Colección vacía tras la purga.** Cuando se corra
-`scripts/crearSesionesIniciales.js --confirmar`, va a crear las 4 con
-títulos provisionales ("Sesión 1"..."Sesión 4") — renombrarlas a los
-temas reales es una simple actualización de `titulo` vía
-`PATCH /sesiones/:numero`, no requiere cambio de esquema ni de código.
+4 documentos con títulos provisionales ("Sesión 1"..."Sesión 4").
+Renombrarlos a los temas reales es una simple actualización de `titulo`
+vía `PATCH /sesiones/:numero`, no requiere cambio de esquema ni de
+código — sigue pendiente definir esos temas con la fundadora.
 
-## 5. examenes — sin cambios de esquema
+## 5. examenes — sin cambios de esquema, colección vacía
 
 ```js
 {
@@ -105,14 +113,37 @@ temas reales es una simple actualización de `titulo` vía
 }
 ```
 
-**Colección vacía tras la purga.** Pendiente crear versiones nuevas para
-las 4 sesiones una vez definido el contenido real.
+Pendiente crear versiones nuevas para las 4 sesiones una vez definido el
+contenido real.
 
-## 6. intentosExamen — sin cambios de esquema, colección vacía tras la purga
+## 6. intentosExamen — sin cambios de esquema, colección vacía
 
-## 7. progresoEstudiante — sin cambios de esquema, colección vacía tras la purga
+## 7. progresoEstudiante — sin cambios de esquema, colección vacía
 
-## 8. contenidoSesion — sin cambios de esquema, colección vacía tras la purga
+## 8. contenidoSesion — NUEVO campo `publicIdCloudinary` (13/08/2026)
+
+```js
+{
+  _id: ObjectId,
+  sesionId: ObjectId,      // ref: sesiones
+  titulo: String,
+  tipo: String,            // 'video' | 'pdf' | 'enlace' | 'texto'
+  url: String,              // video/pdf/enlace
+  publicIdCloudinary: String, // NUEVO — solo si el pdf se subió como archivo
+                              // (permite generar una URL de descarga
+                              // firmada al momento; si está vacío, se usa
+                              // `url` directo como fallback)
+  contenidoTexto: String,   // texto
+  imagenUrl: String,        // portada opcional, cualquier tipo
+  orden: Number,
+  activo: Boolean,
+  createdAt: Date, updatedAt: Date
+}
+```
+
+Colección todavía vacía de contenido real — el flujo de subida de PDF ya
+se probó en producción, pero no se ha cargado ningún material real
+todavía.
 
 ## 9. diplomas — sin cambios de esquema, colección vacía tras la purga
 
@@ -123,6 +154,11 @@ las 4 sesiones una vez definido el contenido real.
 ## 15. balancesMensuales — sin cambios, no purgada
 
 ## 16. destinatariosNotificacion — sin cambios, no purgada
+
+Es el mismo mecanismo que ahora también usa la solicitud del formulario
+de Empresas (ver ARQUITECTURA_BACKEND.md) — no se agregó ninguna
+colección nueva para ese formulario, y por ahora tampoco se persisten
+los leads que llegan por ahí (solo se notifican por correo/Telegram).
 
 ---
 
@@ -144,17 +180,20 @@ las 4 sesiones una vez definido el contenido real.
 - `activo` como patrón de soft delete sigue siendo consistente en las 3
   colecciones donde importa preservar historial (`users`, `examenes`,
   `contenidoSesion`).
-- La purga de datos de prueba ahora tiene un script formal y repetible
-  (`scripts/purgarDatosPrueba.js`, con dry-run por defecto) en vez de ser
-  solo un procedimiento manual documentado — ver ARQUITECTURA_BACKEND.md.
+- La purga de datos de prueba tiene un script formal y repetible
+  (`scripts/purgarDatosPrueba.js`, con dry-run por defecto) — ver
+  ARQUITECTURA_BACKEND.md.
 
 ## Pendiente (base de datos)
 
-- Correr `scripts/crearSesionesIniciales.js --confirmar` para recrear las
-  4 sesiones con títulos provisionales.
-- Definir los 4 temas reales del curso, renombrar las sesiones, y
-  cargar `contenidoSesion` + `examenes` reales para cada una — todo
-  quedó en 0 documentos tras la purga, es trabajo pendiente completo,
-  no una migración de datos existentes.
+- Definir los 4 temas reales del curso, renombrar las sesiones, y cargar
+  `contenidoSesion` + `examenes` reales para cada una — sigue en 0
+  documentos, es trabajo pendiente completo, no una migración de datos
+  existentes.
+- Evaluar si el formulario de Empresas necesita una colección propia
+  para no depender solo del correo/Telegram (ver ARQUITECTURA_BACKEND.md).
+- Construir una UI de admin para editar `configuracion` (precios) en vez
+  de cambiarlos a mano en Atlas — ahora que se muestran en el home
+  público, un error ahí es más visible.
 - Afinar el rol `backup_readonly` en Atlas de `readAnyDatabase@admin` a
   un rol Read específico sobre `mav_rd` (no urgente).

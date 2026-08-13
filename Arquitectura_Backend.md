@@ -1,6 +1,6 @@
 # Arquitectura del Backend — mav-rd-backend
 
-> Refleja el estado REAL del código al 07/08/2026. Reemplaza la versión
+> Refleja el estado REAL del código al 13/08/2026. Reemplaza la versión
 > anterior de este mismo archivo. Para el historial de cómo se llegó aquí,
 > ver HISTORIAL_MODIFICACIONES.md.
 
@@ -14,14 +14,17 @@ cookies) + Cloudinary (archivos) + Resend (email) + Telegram Bot API
 - CORS: FRONTEND_URL en Render debe apuntar exactamente a la URL de
   Vercel (https://muvo-rd.vercel.app), sin `/` al final.
 - Variables de entorno relevantes: JWT_SECRET, JWT_EXPIRES_IN, Cloudinary
-  (cloud name/api key/secret), RESEND_API_KEY, TELEGRAM_BOT_TOKEN,
-  MONGODB_URI (o MONGO_URI, según el .env real — los scripts de
-  mantenimiento en `scripts/` prueban ambos nombres).
+  (cloud name/api key/secret), RESEND_API_KEY, RESEND_FROM,
+  TELEGRAM_BOT_TOKEN, MONGODB_URI (o MONGO_URI, según el .env real — los
+  scripts de mantenimiento en `scripts/` prueban ambos nombres).
 - **Bloqueante actual, sin cambios:** Resend usa el dominio de pruebas
   (onboarding@resend.dev), que solo entrega a la dirección dueña de la
   cuenta de Resend. Requiere que la fundadora compre y verifique un
   dominio propio en su cuenta de Vercel. Prioridad #1 antes de invitar
-  estudiantes reales — sigue bloqueado hasta la reunión con ella.
+  estudiantes reales — sigue bloqueado hasta la reunión con ella. Esto
+  también afecta al formulario de Empresas (ver más abajo): el envío al
+  backend funciona, pero el correo real a la fundadora no va a llegar
+  hasta que esto se resuelva.
 
 ## Audiencia del curso (cambio de alcance, 06/08/2026)
 
@@ -30,10 +33,18 @@ también está dirigido a adolescentes de ambos sexos. El backend en sí
 nunca tuvo lógica específica de género (roles, validaciones y modelos son
 neutros desde el inicio), así que este cambio no tocó ninguna colección
 ni controller. El impacto real está en el frontend (copy, textos de
-marketing) — ver ARQUITECTURA_FRONTEND.md. Cualquier contenido nuevo
-(exámenes, material de estudio, comunicaciones) que se redacte de ahora
-en adelante debe usar lenguaje neutral, no dirigido a un género
-específico.
+marketing) — ver ARQUITECTURA_FRONTEND.md.
+
+## Estructura real de planes (aclarado 13/08/2026)
+
+Un solo curso teórico (4 sesiones, igual para todas) con **dos variantes
+de práctica de manejo**: `normal` y `vip` — la diferencia es solo en la
+práctica (más personalizada, más tiempo con el instructor en el plan
+VIP), no en el contenido teórico. Esto ya estaba modelado así desde antes
+en `Inscripcion.tipoPlan` (`enum: ["normal", "vip"]`); lo nuevo es que
+ahora también se muestra en el home público (ver
+ARQUITECTURA_FRONTEND.md), leyendo los mismos precios de
+`GET /api/configuracion` que ya usaba `/inscripcion`.
 
 ## Autenticación y roles
 
@@ -56,80 +67,84 @@ Sin cambios de esquema ni de endpoints desde la versión anterior.
 
 ## Sesiones, contenido y exámenes
 
-### `Sesion` — límite ampliado de 3 a 4 (06/08/2026)
+### `Sesion` — límite de 4, colección ya recreada (06-13/08/2026)
 
 ```js
 numero: { type: Number, required: true, unique: true, min: 1, max: 4 },
 ```
 
-Antes tenía `max: 3` — este era el verdadero límite duro del sistema:
-Mongo rechazaba cualquier intento de crear una Sesión 4 antes de que el
-resto de la lógica (que ya era genérica) llegara a evaluarla.
+El script `scripts/crearSesionesIniciales.js --confirmar` (documentado
+como pendiente en la versión anterior de este archivo) **ya se ejecutó**
+— las 4 sesiones existen en Atlas con títulos provisionales ("Sesión
+1"..."Sesión 4"). Sigue sin haber un `POST /sesiones` — `sesionController.js`
+solo expone `listarSesiones`, `obtenerSesionParaEstudiante` y
+`actualizarSesion` (PATCH). Ver DATABASE.md para el estado real de la
+colección.
 
-### ⚠️ Hueco descubierto esta sesión: no existe `POST /sesiones`
+**Sigue pendiente:** definir los 4 temas reales con la fundadora y
+renombrar las sesiones — el backend ya soporta el rename vía
+`PATCH /sesiones/:numero` (`titulo`), pero el panel de coordinadora
+todavía no tiene un formulario para eso (ver ARQUITECTURA_FRONTEND.md).
 
-`sesionController.js` solo expone tres operaciones:
+### `ContenidoSesion` — ahora soporta subir PDF como archivo, no solo pegar URL (13/08/2026)
 
-- `listarSesiones` (GET /, coordinadora/admin) — lista completa.
-- `obtenerSesionParaEstudiante` (GET /:numero, estudiante) — solo si tiene
-  acceso desbloqueado.
-- `actualizarSesion` (PATCH /:numero, admin) — **edita** una sesión que ya
-  existe (`findOneAndUpdate` por `numero`); si no existe, devuelve 404.
-
-**No hay ningún endpoint para crear una sesión nueva.** Las 3 sesiones
-originales se crearon directo en Atlas, a mano — nunca hubo un camino de
-API para esto. Se reveló al purgar la base de datos (ver más abajo) y
-quedarse sin ninguna sesión: el panel de coordinadora no tenía forma de
-recrearlas.
-
-**Solución pragmática adoptada:** un script de terminal
-(`scripts/crearSesionesIniciales.js`, ver abajo) en vez de construir un
-endpoint nuevo — es una operación que se hace una vez (crear las 4
-sesiones), no una función que la coordinadora vaya a necesitar seguido.
-Si en el futuro hace falta crear sesiones desde el panel con frecuencia,
-ahí sí valdría la pena un `POST /sesiones` real.
-
-**Relacionado, también pendiente:** el panel de coordinadora tampoco
-tiene un formulario para _renombrar_ una sesión — el backend sí lo
-permite (`PATCH /sesiones/:numero` acepta `titulo`), pero el frontend no
-tiene ninguna pantalla que lo use. Cuando se decidan los 4 temas reales,
-alguien va a tener que renombrarlas con una petición manual (Postman/
-Thunder Client) hasta que se construya ese formulario — decisión
-pospuesta a propósito, se retoma más adelante.
-
-### `ContenidoSesion` y `Examen`
-
-Sin cambios de esquema — el patrón de soft delete (`activo: Boolean`)
-sigue igual que antes. Ver DATABASE.md: ambas colecciones quedaron
-**vacías** tras la purga del 06/08/2026, pendientes de contenido real.
-
-### `intentarDesbloquear()` — lógica compartida de desbloqueo del EXAMEN
-
-Sin cambios de comportamiento — sigue validando orden estricto contra
-`sesionesAprobadas`, máximo 3 intentos, espera de 24h, etc. Nunca tuvo el
-número de sesiones quemado, así que generaliza sola a 4 sesiones sin
-tocarla.
-
-### `entregarIntento()` (`intentoExamenController.js`) — actualizado a 4 sesiones (06/08/2026)
-
-Tres números que antes decían `3` ahora dicen `4`:
+Antes, `tipo: "pdf"` solo aceptaba una URL pegada a mano en `url`. Ahora
+se puede **subir el archivo real** desde el panel de coordinadora, con
+entrega firmada — mismo patrón que ya existía para los diplomas.
 
 ```js
-const siguienteSesion = Math.min(sesionDoc.numero + 1, 4); // antes: 3
-if (sesionDoc.numero < 4) { ... }                          // antes: 3
-if (progreso.sesionesAprobadas.length >= 4) {               // antes: 3
-  progreso.cursoCompletado = true;
+{
+  sesionId: ObjectId,
+  titulo: String,
+  tipo: "video" | "pdf" | "enlace" | "texto",
+  url: String,               // video/pdf/enlace
+  publicIdCloudinary: String, // NUEVO — solo si el pdf se subió como archivo
+  contenidoTexto: String,    // texto
+  imagenUrl: String,         // portada opcional, cualquier tipo
+  orden: Number,
+  activo: Boolean,
 }
 ```
 
-`cursoCompletado` ahora solo se activa después de aprobar las 4 sesiones,
-no 3.
+Flujo completo:
+
+1. **Subida** — `POST /api/uploads/pdf` (coordinadora/admin, multipart,
+   campo `pdf`, límite 15MB, `middleware/upload.js` → `uploadPDF`).
+   Sube a Cloudinary con `resourceType: "raw"` (carpeta
+   `mav-rd/contenido-sesion`) y devuelve `{ url, publicId }`.
+2. **Guardado** — `crearContenido`/`editarContenido` en
+   `contenidoSesionController.js` aceptan y guardan `publicIdCloudinary`
+   igual que cualquier otro campo.
+3. **Entrega** — `GET /api/contenido-sesion/:id/archivo` (NUEVO). Como
+   Cloudinary bloquea la entrega pública de recursos `raw` sin firmar
+   (mismo motivo por el que existe `generarUrlDescargaFirmada` para los
+   diplomas), este endpoint genera una URL firmada al momento, hace
+   fetch a Cloudinary y sirve el PDF inline. Vive **fuera** de
+   `protegerRuta` en `routes/contenidoSesion.js` porque un `<a href>` de
+   descarga no puede mandar headers — verifica el token manualmente
+   (header o `?token=`), mismo patrón exacto que
+   `diplomaController.js#obtenerUsuarioDesdeToken`. A diferencia del
+   diploma, aquí sí valida que la estudiante tenga la sesión
+   desbloqueada (`sesion.numero <= progreso.sesionActualDesbloqueada`)
+   antes de entregarle el archivo — coordinadora/admin tienen acceso
+   libre.
+4. **Fallback** — si el material tiene `url` pero no
+   `publicIdCloudinary` (porque alguien pegó un link externo a mano en
+   vez de subir un archivo), el frontend usa `url` directo. Contenido
+   viejo (de antes de este cambio) sigue funcionando así.
+
+**Todavía no se cargó contenido real** — la colección sigue vacía de
+PDFs/material real, solo se confirmó que el flujo de subida despliega y
+responde bien. Pendiente cargar contenido de verdad cuando estén listos
+los temas reales de las 4 sesiones.
+
+### `intentarDesbloquear()` y `entregarIntento()` — sin cambios en esta sesión
+
+Sin cambios de comportamiento desde la versión anterior de este archivo.
 
 ## Diplomas (/api/diplomas)
 
-Sin cambios de backend en esta sesión — el diploma compartible en redes
-(imagen generada con `<canvas>`) es 100% frontend, ver
-ARQUITECTURA_FRONTEND.md. Nada de esto tocó `diplomaController.js`.
+Sin cambios en esta sesión.
 
 ## Inscripciones y pagos
 
@@ -137,59 +152,81 @@ Sin cambios en esta sesión.
 
 ## Sistema de notificaciones (internas)
 
-Sin cambios en esta sesión.
+`utils/notificaciones.js` — se agregó `enviarSolicitudEmpresarial`
+(13/08/2026), que reutiliza exactamente el mismo mecanismo que
+`notificarNuevoVoucher`/`notificarBalancePendiente`: busca todos los
+`DestinatarioNotificacion` con `activo: true` y notifica a cada uno por
+su `tipo` (`email` vía Resend, `telegram` vía Bot API). No se agregó
+ninguna colección ni configuración nueva — llega al mismo correo
+institucional que ya recibe los demás avisos internos.
 
-## Scripts de mantenimiento (`scripts/`, NUEVO 06/08/2026)
+## NUEVO: Formulario empresarial (Empresas)
 
-Carpeta nueva, a la altura de `src/`, para operaciones de datos que se
-hacen por terminal — nunca desde un endpoint de la API, siguiendo la
-misma decisión que ya existía para la purga de datos de prueba.
+Primera versión, deliberadamente simple — **solo generación de leads**,
+sin modelo de precios escalonado ni inscripción grupal real (decisión
+explícita: evaluar demanda real antes de construir esa lógica).
 
-- **`purgarDatosPrueba.js`**: borra todo excepto la cuenta admin
-  (`maria@test.com`) — usuarios, sesiones, exámenes, contenido de
-  estudio, intentos de examen, progreso de estudiante, inscripciones y
-  diplomas. Modo dry-run por defecto (solo cuenta, no borra), requiere
-  `--confirmar` + escribir `BORRAR` a mano para ejecutar de verdad. **Ya
-  se corrió el 06/08/2026** — ver DATABASE.md para los conteos exactos
-  purgados.
-- **`crearSesionesIniciales.js`**: crea las sesiones 1-4 con títulos
-  provisionales ("Sesión 1"..."Sesión 4"), para poder probar
-  contenido/exámenes mientras se definen los temas reales. Mismo patrón
-  dry-run + `--confirmar`. **Creado pero todavía no ejecutado** — pendiente
-  para la próxima sesión de trabajo.
+- `routes/empresasRoutes.js` — `POST /api/empresas/contacto`, público
+  (fuera de `protegerRuta`, es un formulario de contacto abierto en
+  `/empresas`).
+- `controllers/empresasController.js#enviarContactoEmpresarial` — valida
+  que vengan `nombreEmpresa`, `contacto`, `telefono` y `email`, y llama a
+  `enviarSolicitudEmpresarial`. **No persiste nada en Mongo** — si el
+  correo falla o se pierde, no queda registro. Ver "Pendiente" más abajo.
+- Montado en `app.js` como `app.use("/api/empresas", empresasRoutes)`.
 
-Ambos requieren `MONGODB_URI` (o `MONGO_URI`) en el `.env` del backend y
-reusan los modelos reales de `src/models/`, no queries genéricas sueltas.
+## Scripts de mantenimiento (`scripts/`)
+
+- **`purgarDatosPrueba.js`**: sin cambios, ya documentado. Corrido el
+  06/08/2026.
+- **`crearSesionesIniciales.js`**: **ya se ejecutó** (con `--confirmar`)
+  — las 4 sesiones existen con títulos provisionales. Este cambio no se
+  había registrado formalmente en la versión anterior de este documento;
+  queda corregido aquí.
 
 ## Notas de diseño
 
-- Ningún borrado es físico donde importa la integridad histórica: `Examen`,
-  `ContenidoSesion` y `User` (vía `activo`) son siempre soft delete.
-  `Diploma` no tiene ni necesita soft delete.
-- La purga real de datos de prueba se hace por terminal, directo a Mongo,
-  nunca desde una función de UI — decisión que ya existía y que ahora
-  tiene script formal reutilizable (ver arriba).
+- Ningún borrado es físico donde importa la integridad histórica:
+  `Examen`, `ContenidoSesion` y `User` (vía `activo`) son siempre soft
+  delete. `Diploma` no tiene ni necesita soft delete.
+- Patrón de "entrega firmada al momento" para recursos `raw` de
+  Cloudinary: nació con los diplomas, ahora también lo usa el PDF de
+  material de estudio. Si en el futuro se necesita un tercer caso,
+  replicar el mismo patrón (`generarUrlDescargaFirmada` +
+  verificación manual de token) en vez de inventar uno nuevo.
 
 ## Pendiente real (backend)
 
 - Prioridad #1: dominio propio verificado en Resend (bloqueado hasta
-  reunión con la fundadora).
+  reunión con la fundadora) — también bloquea que el formulario de
+  Empresas llegue de verdad por correo.
 - Terminar Telegram para el celular de la fundadora (`chat_id`, bloqueado
-  hasta la misma reunión).
-- Correr `scripts/crearSesionesIniciales.js --confirmar` para recrear las
-  4 sesiones (con títulos provisionales) y poder retomar la carga de
-  contenido.
-- Definir los 4 temas reales del curso con la fundadora, y renombrar las
-  sesiones (por ahora, a mano vía `PATCH /sesiones/:numero`; considerar
-  construir un formulario en el panel si esto se vuelve frecuente).
-- Subir `ContenidoSesion` y crear versiones de `Examen` reales para las 4
-  sesiones — todo quedó vacío tras la purga.
+  hasta la misma reunión) — sería el canal de respaldo mientras Resend
+  sigue bloqueado.
+- Definir los 4 temas reales del curso con la fundadora, renombrar las
+  sesiones (a mano vía `PATCH /sesiones/:numero` hasta que exista un
+  formulario en el panel).
+- Subir `ContenidoSesion` real (con PDFs de verdad, usando el flujo ya
+  construido) y crear versiones de `Examen` para las 4 sesiones — todo
+  sigue vacío.
+- **NUEVO:** evaluar si el formulario de Empresas necesita persistir los
+  leads en una colección (hoy solo se envían por correo/Telegram — si
+  Resend falla o el mensaje se pierde entre notificaciones, no queda
+  ningún registro). Bajo esfuerzo si se decide hacerlo, pospuesto a
+  propósito por ahora.
+- **NUEVO:** no existe una UI de admin para editar `Configuracion`
+  (`precio_plan_normal`/`precio_plan_vip`) — hoy se cambian a mano en
+  Atlas. Ahora que el precio también se muestra en el home público, un
+  cambio de precio mal hecho ahí se refleja directo en el sitio; vale la
+  pena construir un formulario simple en el panel de admin en algún
+  momento.
 - Decidir si vale la pena construir `POST /sesiones` (crear sesión desde
   el panel) o si el script de terminal es suficiente a largo plazo.
 - Recordatorios por correo (examen disponible / voucher sin seguimiento):
   ideas a futuro, sin diseñar, falta resolver el disparador sin cron real.
 - Seguridad/confiabilidad: rotar credenciales expuestas, rate limiting en
-  login/verificar-diploma, CORS dinámico, Sentry — al final, cuando la app
-  esté más madura.
+  login/verificar-diploma/**empresas/contacto** (formulario público
+  nuevo, sin límite de envíos todavía), CORS dinámico, Sentry — al final,
+  cuando la app esté más madura.
 - Afinar el rol `backup_readonly` en Atlas de `readAnyDatabase@admin` a
   un rol Read específico sobre `mav_rd` (no urgente, es de solo lectura).
