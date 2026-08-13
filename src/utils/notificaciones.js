@@ -110,6 +110,70 @@ async function notificarNuevoVoucher({ nombreEstudiante, tipoPlan, monto }) {
   }
 }
 
+// --- NUEVO: Notificación interna: nueva solicitud del programa empresarial ---
+// Reutiliza exactamente el mismo mecanismo de DestinatarioNotificacion que
+// ya se usa para vouchers y balances pendientes — llega al mismo correo
+// institucional (y Telegram, si hay alguno activo) sin agregar
+// configuración nueva.
+async function enviarSolicitudEmpresarial({
+  nombreEmpresa,
+  contacto,
+  cargo,
+  telefono,
+  email,
+  cantidadEstudiantes,
+  mensaje,
+}) {
+  try {
+    const destinatarios = await DestinatarioNotificacion.find({ activo: true });
+
+    const asunto = `Nueva solicitud empresarial — ${nombreEmpresa}`;
+    const textoPlano = `${nombreEmpresa} solicitó información sobre el programa empresarial. Contacto: ${contacto}${
+      cargo ? ` (${cargo})` : ""
+    }, tel: ${telefono}, correo: ${email}${
+      cantidadEstudiantes ? `, ~${cantidadEstudiantes} estudiantes` : ""
+    }.${mensaje ? ` Mensaje: ${mensaje}` : ""}`;
+    const htmlEmail = plantillaCorreo({
+      titulo: "Nueva solicitud del programa empresarial",
+      cuerpoHtml: `
+        <p><strong>Empresa:</strong> ${nombreEmpresa}</p>
+        <p><strong>Contacto:</strong> ${contacto}${cargo ? ` — ${cargo}` : ""}</p>
+        <p><strong>Teléfono:</strong> ${telefono}</p>
+        <p><strong>Correo:</strong> ${email}</p>
+        ${
+          cantidadEstudiantes
+            ? `<p><strong>Cantidad estimada de estudiantes:</strong> ${cantidadEstudiantes}</p>`
+            : ""
+        }
+        ${mensaje ? `<p><strong>Mensaje:</strong><br/>${mensaje}</p>` : ""}
+      `,
+    });
+
+    await Promise.all(
+      destinatarios.map(async (d) => {
+        try {
+          if (d.tipo === "email") {
+            await enviarEmailResend({
+              to: d.valor,
+              subject: asunto,
+              html: htmlEmail,
+            });
+          } else if (d.tipo === "telegram") {
+            await enviarMensajeTelegram({ chatId: d.valor, texto: textoPlano });
+          }
+        } catch (err) {
+          console.error(
+            `No se pudo notificar a ${d.tipo}:${d.valor} —`,
+            err.message,
+          );
+        }
+      }),
+    );
+  } catch (err) {
+    console.error("Error notificando solicitud empresarial:", err.message);
+  }
+}
+
 // --- Correo a la estudiante: verificar su cuenta ---
 async function enviarCorreoVerificacion({ to, nombre, token }) {
   try {
@@ -278,6 +342,7 @@ async function notificarBalancePendiente({ mes, anio }) {
 module.exports = {
   notificarNuevoVoucher,
   notificarBalancePendiente,
+  enviarSolicitudEmpresarial,
   enviarCorreoVerificacion,
   enviarCorreoPagoConfirmado,
   enviarCorreoPagoRechazado,
