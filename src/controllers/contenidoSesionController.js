@@ -1,10 +1,12 @@
+const jwt = require("jsonwebtoken");
 const ContenidoSesion = require("../models/ContenidoSesion");
 const Sesion = require("../models/Sesion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
+const User = require("../models/User");
 const { intentarDesbloquear } = require("./examenController");
+const { generarUrlDescargaFirmada } = require("../utils/cloudinaryUpload");
 
 // GET /api/contenido-sesion/sesion/:sesionId — cualquier autenticada, solo activos
-// (la estudiante lo usa para ver su lista de materiales de estudio)
 async function listarActivosPorSesion(req, res, next) {
   try {
     const { sesionId } = req.params;
@@ -20,7 +22,7 @@ async function listarActivosPorSesion(req, res, next) {
   }
 }
 
-// GET /api/contenido-sesion/admin/sesion/:sesionId — coordinadora/admin, todos (incluye inactivos)
+// GET /api/contenido-sesion/admin/sesion/:sesionId — coordinadora/admin, todos
 async function listarTodosPorSesion(req, res, next) {
   try {
     const { sesionId } = req.params;
@@ -36,8 +38,16 @@ async function listarTodosPorSesion(req, res, next) {
 // POST /api/contenido-sesion — coordinadora/admin
 async function crearContenido(req, res, next) {
   try {
-    const { sesionId, titulo, tipo, url, contenidoTexto, imagenUrl, orden } =
-      req.body;
+    const {
+      sesionId,
+      titulo,
+      tipo,
+      url,
+      publicIdCloudinary,
+      contenidoTexto,
+      imagenUrl,
+      orden,
+    } = req.body;
 
     if (!sesionId || !titulo || !tipo) {
       return res.status(400).json({
@@ -58,6 +68,7 @@ async function crearContenido(req, res, next) {
       titulo,
       tipo,
       url,
+      publicIdCloudinary,
       contenidoTexto,
       imagenUrl,
       orden: orden ?? 0,
@@ -73,8 +84,16 @@ async function crearContenido(req, res, next) {
 async function editarContenido(req, res, next) {
   try {
     const { id } = req.params;
-    const { titulo, tipo, url, contenidoTexto, imagenUrl, orden, activo } =
-      req.body;
+    const {
+      titulo,
+      tipo,
+      url,
+      publicIdCloudinary,
+      contenidoTexto,
+      imagenUrl,
+      orden,
+      activo,
+    } = req.body;
 
     const contenido = await ContenidoSesion.findById(id);
     if (!contenido) {
@@ -86,6 +105,8 @@ async function editarContenido(req, res, next) {
     if (titulo !== undefined) contenido.titulo = titulo;
     if (tipo !== undefined) contenido.tipo = tipo;
     if (url !== undefined) contenido.url = url;
+    if (publicIdCloudinary !== undefined)
+      contenido.publicIdCloudinary = publicIdCloudinary;
     if (contenidoTexto !== undefined) contenido.contenidoTexto = contenidoTexto;
     if (imagenUrl !== undefined) contenido.imagenUrl = imagenUrl;
     if (orden !== undefined) contenido.orden = orden;
@@ -117,14 +138,6 @@ async function eliminarContenido(req, res, next) {
 }
 
 // POST /api/contenido-sesion/:id/marcar-visto — estudiante
-// Al completar TODO el contenido activo de una sesión, intenta desbloquear
-// el examen automáticamente. Si la sesión es una sesión nueva (no la que ya
-// tenía desbloqueada) y todavía no pasan 24h desde que aprobó la anterior,
-// intentarDesbloquear rechaza con esperaActiva:true — eso NO es un error
-// real aquí: el contenido igual queda marcado como visto, solo no se crea
-// el examen todavía. El frontend usa disponibleEn para pintar la cuenta
-// regresiva y luego llama a POST /intentos-examen/reintentar/:sesionId
-// cuando se cumple el plazo.
 async function marcarVisto(req, res, next) {
   try {
     const { id } = req.params;
@@ -153,7 +166,6 @@ async function marcarVisto(req, res, next) {
       await progreso.save();
     }
 
-    // ¿Ya vio TODO el contenido activo de esta sesión?
     const contenidosDeLaSesion = await ContenidoSesion.find({
       sesionId: contenido.sesionId,
       activo: true,
@@ -179,14 +191,9 @@ async function marcarVisto(req, res, next) {
       if (resultado.ok) {
         examenDesbloqueado = true;
       } else if (resultado.esperaActiva) {
-        // Caso esperado: ya vio todo pero aún no pasan las 24h. No es un
-        // error — el frontend lo usa para mostrar la cuenta regresiva.
         esperaActiva = true;
         disponibleEn = resultado.disponibleEn;
       }
-      // Cualquier otro rechazo (ej. ya agotó los 3 intentos) simplemente
-      // deja examenDesbloqueado en false, sin romper esta respuesta — el
-      // contenido de todas formas queda marcado como visto.
     }
 
     res.json({
@@ -203,6 +210,90 @@ async function marcarVisto(req, res, next) {
   }
 }
 
+// Verifica el token manualmente (mismo patrón que diplomaController.js),
+// porque un link <a href> de descarga no puede mandar headers
+// personalizados — acepta tanto Authorization como ?token=.
+async function obtenerUsuarioDesdeToken(req) {
+  const header = req.headers.authorization;
+  const token = header?.startsWith("Bearer ")
+    ? header.slice(7)
+    : req.query.token;
+  if (!token) return null;
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    return await User.findById(payload.id);
+  } catch {
+    return null;
+  }
+}
+
+// GET /api/contenido-sesion/:id/archivo — entrega el PDF con una URL
+// firmada generada al momento (Cloudinary bloquea la entrega pública de
+// recursos 'raw' sin firmar, igual que pasaba con los diplomas).
+// Coordinadora/admin: acceso libre. Estudiante: solo si la sesión de este
+// material ya está desbloqueada para ella.
+async function obtenerArchivo(req, res, next) {
+  try {
+    const usuario = await obtenerUsuarioDesdeToken(req);
+    if (!usuario) {
+      return res.status(401).json({ success: false, error: "No autorizado." });
+    }
+
+    const contenido = await ContenidoSesion.findById(req.params.id);
+    if (!contenido || !contenido.activo) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Material no encontrado." });
+    }
+
+    if (contenido.tipo !== "pdf" || !contenido.publicIdCloudinary) {
+      return res.status(400).json({
+        success: false,
+        error: "Este material no tiene un archivo PDF cargado.",
+      });
+    }
+
+    if (usuario.rol === "estudiante") {
+      const sesion = await Sesion.findById(contenido.sesionId);
+      const progreso = await ProgresoEstudiante.findOne({
+        userId: usuario._id,
+      });
+      const desbloqueada =
+        sesion &&
+        progreso &&
+        sesion.numero <= progreso.sesionActualDesbloqueada;
+      if (!desbloqueada) {
+        return res.status(403).json({
+          success: false,
+          error: "Todavía no tienes acceso a este material.",
+        });
+      }
+    } else if (!["coordinadora", "admin"].includes(usuario.rol)) {
+      return res.status(401).json({ success: false, error: "No autorizado." });
+    }
+
+    const urlFirmada = generarUrlDescargaFirmada(contenido.publicIdCloudinary);
+
+    const respuestaCloudinary = await fetch(urlFirmada);
+    if (!respuestaCloudinary.ok) {
+      return res.status(502).json({
+        success: false,
+        error: "No se pudo obtener el PDF desde Cloudinary.",
+      });
+    }
+
+    const buffer = Buffer.from(await respuestaCloudinary.arrayBuffer());
+    res.set({
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="${contenido.titulo}.pdf"`,
+    });
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   listarActivosPorSesion,
   listarTodosPorSesion,
@@ -210,4 +301,5 @@ module.exports = {
   editarContenido,
   eliminarContenido,
   marcarVisto,
+  obtenerArchivo,
 };
