@@ -24,7 +24,9 @@ const app = express();
 
 const origenesPermitidos = [
   "http://localhost:3000",
-  process.env.FRONTEND_URL, // la URL de Vercel en producción
+  "https://www.muvordvial.com",
+  "https://muvordvial.com",
+  "https://muvo-rd.vercel.app",
 ];
 
 app.use(
