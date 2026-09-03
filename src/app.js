@@ -18,10 +18,15 @@ const contenidoRoutes = require("./routes/contenido");
 const contenidoSesionRoutes = require("./routes/contenidoSesion");
 const destinatarioRoutes = require("./routes/destinatarioRoutes");
 const empresasRoutes = require("./routes/empresasRoutes");
+const chatbotRoutes = require("./routes/chatbotRoutes");
+const resumenRoutes = require("./routes/resumenRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
 
+// Lista fija de orígenes permitidos — ya no depende de una sola
+// variable de entorno, para no perder acceso desde ningún dominio
+// activo (ver ARQUITECTURA_BACKEND.md, sección Infraestructura).
 const origenesPermitidos = [
   "http://localhost:3000",
   "https://www.muvordvial.com",
@@ -69,6 +74,8 @@ app.use("/api/contenido", contenidoRoutes);
 app.use("/api/contenido-sesion", contenidoSesionRoutes);
 app.use("/api/destinatarios", destinatarioRoutes);
 app.use("/api/empresas", empresasRoutes);
+app.use("/api/chatbot", chatbotRoutes);
+app.use("/api/interno", resumenRoutes);
 
 // Cualquier ruta no encontrada
 app.use((req, res) => {
