@@ -1,0 +1,20 @@
+name: Resumen diario
+
+# 9:00 PM hora de Santo Domingo (AST, UTC-4) = 01:00 UTC del día
+# siguiente. GitHub Actions usa UTC siempre en el cron.
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  # Permite dispararlo a mano desde la pestaña Actions de GitHub, útil
+  # para probar sin esperar a la hora programada.
+  workflow_dispatch:
+
+jobs:
+  ejecutar-resumen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar al endpoint del resumen diario
+        run: |
+          curl -f -X POST "https://mav-rd-backend.onrender.com/api/interno/resumen-diario" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            --max-time 60
