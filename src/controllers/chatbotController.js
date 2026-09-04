@@ -22,25 +22,42 @@ Reglas estrictas:
 - Los montos son en pesos dominicanos (RD$).
 - No tienes forma de modificar ni borrar nada — solo puedes leer datos.`;
 
+function esperar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Gemini (sobre todo en capa gratuita) devuelve 503 "alta demanda" con
+// cierta frecuencia — es temporal, así que reintentamos un par de veces
+// con una pequeña espera antes de rendirnos, en vez de fallarle a la
+// fundadora en el primer tropiezo.
 async function llamarGemini(contents) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODELO_GEMINI}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+  const MAX_INTENTOS = 3;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: INSTRUCCION_SISTEMA }] },
-      contents,
-      tools: [{ functionDeclarations: DECLARACIONES_HERRAMIENTAS }],
-    }),
-  });
+  for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: INSTRUCCION_SISTEMA }] },
+        contents,
+        tools: [{ functionDeclarations: DECLARACIONES_HERRAMIENTAS }],
+      }),
+    });
 
-  if (!res.ok) {
+    if (res.ok) {
+      return res.json();
+    }
+
     const detalle = await res.text();
-    throw new Error(`Gemini respondió ${res.status}: ${detalle}`);
-  }
+    const esReintentable = res.status === 503 || res.status === 429;
 
-  return res.json();
+    if (!esReintentable || intento === MAX_INTENTOS) {
+      throw new Error(`Gemini respondió ${res.status}: ${detalle}`);
+    }
+
+    await esperar(1000 * intento); // 1s, luego 2s
+  }
 }
 
 // POST /api/chatbot/preguntar — { pregunta: string }
