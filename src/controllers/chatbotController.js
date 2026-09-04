@@ -4,9 +4,10 @@ const {
 } = require("../utils/geminiHerramientas");
 
 // Modelo configurable por env var para poder cambiarlo sin redeploy si
-// Google renombra/retira uno — con default a un modelo Flash (capa
-// gratuita generosa, confirmado vigente en 2026).
-const MODELO_GEMINI = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// Google renombra/retira uno — con default a Gemini 3.6 Flash (capa
+// gratuita vigente confirmada el 28/08/2026; reemplazó a la familia
+// 2.5 Flash, que Google dejó de ofrecer a cuentas nuevas).
+const MODELO_GEMINI = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
 const INSTRUCCION_SISTEMA = `Eres el asistente interno de María Díaz, fundadora de Muvo RD Vial
 (escuela de educación vial en Santo Domingo, República Dominicana).
