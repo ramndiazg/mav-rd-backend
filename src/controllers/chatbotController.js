@@ -87,7 +87,12 @@ async function preguntar(req, res, next) {
       }
 
       // El modelo pidió una o más herramientas — las ejecutamos todas y
-      // le devolvemos los resultados en el mismo turno.
+      // le devolvemos los resultados en el mismo turno. IMPORTANTE
+      // (Gemini 3.x, confirmado 28/08/2026): el rol de la respuesta de
+      // función es "user", NO "function" como en versiones anteriores
+      // de la API — y cada functionResponse debe incluir el mismo `id`
+      // que trajo la llamada correspondiente, o Gemini la rechaza con
+      // un error de "strict matching".
       contents.push({ role: "model", parts: partes });
 
       const resultados = await Promise.all(
@@ -98,6 +103,7 @@ async function preguntar(req, res, next) {
           );
           return {
             functionResponse: {
+              id: p.functionCall.id,
               name: p.functionCall.name,
               response: resultado,
             },
@@ -105,7 +111,7 @@ async function preguntar(req, res, next) {
         }),
       );
 
-      contents.push({ role: "function", parts: resultados });
+      contents.push({ role: "user", parts: resultados });
     }
 
     // Se acabaron los pasos permitidos sin llegar a una respuesta final.
