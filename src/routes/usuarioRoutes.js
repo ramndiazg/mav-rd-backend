@@ -3,12 +3,12 @@ const router = express.Router();
 const {
   listarUsuarios,
   crearCoordinadora,
+  crearConductor,
   cambiarEstado,
   cambiarRol,
 } = require("../controllers/usuarioController");
 const { protegerRuta, permitirRoles } = require("../middleware/auth");
 
-// Búsqueda: coordinadora la necesita para encontrar estudiantes (inscripciones, diplomas)
 router.get(
   "/",
   protegerRuta,
@@ -16,13 +16,16 @@ router.get(
   listarUsuarios,
 );
 
-// Gestión de cuentas: exclusiva de admin
 router.post(
   "/coordinadora",
   protegerRuta,
   permitirRoles("admin"),
   crearCoordinadora,
 );
+
+// NUEVO (05/09/2026)
+router.post("/conductor", protegerRuta, permitirRoles("admin"), crearConductor);
+
 router.patch(
   "/:id/estado",
   protegerRuta,

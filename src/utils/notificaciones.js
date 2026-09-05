@@ -1,4 +1,6 @@
 const DestinatarioNotificacion = require("../models/DestinatarioNotificacion");
+const DestinatarioPractica = require("../models/DestinatarioPractica");
+const Instructor = require("../models/Instructor");
 
 // Usa fetch nativo de Node (disponible desde Node 18+) — sin agregar
 // dependencias nuevas al proyecto.
@@ -38,10 +40,6 @@ async function enviarMensajeTelegram({ chatId, texto }) {
   }
 }
 
-// --- Plantilla visual compartida por todos los correos de la app ---
-// Logo + colores de marca + pie de página consistentes, para que se vean
-// profesionales en vez de texto plano. El logo se sirve desde el propio
-// dominio de producción del frontend (public/logo-mav-rd.png).
 function plantillaCorreo({ titulo, cuerpoHtml, botonTexto, botonUrl }) {
   const logoUrl = `${process.env.FRONTEND_URL}/logo-mav-rd.png`;
 
@@ -70,7 +68,6 @@ function plantillaCorreo({ titulo, cuerpoHtml, botonTexto, botonUrl }) {
   </div>`;
 }
 
-// --- Notificación interna: nueva estudiante subió un voucher ---
 async function notificarNuevoVoucher({ nombreEstudiante, tipoPlan, monto }) {
   try {
     const destinatarios = await DestinatarioNotificacion.find({ activo: true });
@@ -110,11 +107,6 @@ async function notificarNuevoVoucher({ nombreEstudiante, tipoPlan, monto }) {
   }
 }
 
-// --- NUEVO: Notificación interna: nueva solicitud del programa empresarial ---
-// Reutiliza exactamente el mismo mecanismo de DestinatarioNotificacion que
-// ya se usa para vouchers y balances pendientes — llega al mismo correo
-// institucional (y Telegram, si hay alguno activo) sin agregar
-// configuración nueva.
 async function enviarSolicitudEmpresarial({
   nombreEmpresa,
   contacto,
@@ -174,7 +166,87 @@ async function enviarSolicitudEmpresarial({
   }
 }
 
-// --- Correo a la estudiante: verificar su cuenta ---
+// --- NUEVO (05/09/2026): estudiante lista para práctica ---
+// Va a DOS listas distintas y separadas:
+// 1) Cada Instructor activo, directo a su correo (via User.email) — son
+//    quienes de verdad tienen que actuar.
+// 2) DestinatarioPractica (activo) — visibilidad para fundadora/coordinadora,
+//    sin mezclarse con DestinatarioNotificacion (esa es para vouchers/
+//    balance/empresas).
+async function notificarEstudianteListaParaPractica({
+  nombre,
+  apellido,
+  cedula,
+  telefono,
+  email,
+  tipoPlan,
+}) {
+  try {
+    const [instructoresActivos, destinatariosPractica] = await Promise.all([
+      Instructor.find({ activo: true }).populate("userId", "nombre email"),
+      DestinatarioPractica.find({ activo: true }),
+    ]);
+
+    const asunto = `Estudiante lista para práctica — ${nombre} ${apellido}`;
+    const textoPlano = `${nombre} ${apellido} (cédula ${cedula}, tel ${telefono}, correo ${email}, plan ${tipoPlan}) terminó toda la teoría y está lista para la práctica de manejo. Contáctala para coordinar.`;
+    const htmlEmail = plantillaCorreo({
+      titulo: "Estudiante lista para práctica",
+      cuerpoHtml: `
+        <p><strong>${nombre} ${apellido}</strong> terminó toda la teoría (las 4 sesiones y sus exámenes) y está lista para la práctica de manejo.</p>
+        <p><strong>Cédula:</strong> ${cedula}<br/>
+        <strong>Teléfono:</strong> ${telefono}<br/>
+        <strong>Correo:</strong> ${email}<br/>
+        <strong>Plan:</strong> ${tipoPlan}</p>
+        <p>Contáctala para coordinar día y hora de práctica.</p>
+      `,
+    });
+
+    const correosInstructores = instructoresActivos
+      .map((i) => i.userId?.email)
+      .filter(Boolean);
+
+    await Promise.all([
+      ...correosInstructores.map(async (correo) => {
+        try {
+          await enviarEmailResend({
+            to: correo,
+            subject: asunto,
+            html: htmlEmail,
+          });
+        } catch (err) {
+          console.error(
+            `No se pudo notificar al instructor ${correo} —`,
+            err.message,
+          );
+        }
+      }),
+      ...destinatariosPractica.map(async (d) => {
+        try {
+          if (d.tipo === "email") {
+            await enviarEmailResend({
+              to: d.valor,
+              subject: asunto,
+              html: htmlEmail,
+            });
+          } else if (d.tipo === "telegram") {
+            await enviarMensajeTelegram({ chatId: d.valor, texto: textoPlano });
+          }
+        } catch (err) {
+          console.error(
+            `No se pudo notificar a ${d.tipo}:${d.valor} —`,
+            err.message,
+          );
+        }
+      }),
+    ]);
+  } catch (err) {
+    console.error(
+      "Error notificando estudiante lista para práctica:",
+      err.message,
+    );
+  }
+}
+
 async function enviarCorreoVerificacion({ to, nombre, token }) {
   try {
     const urlVerificacion = `${process.env.FRONTEND_URL}/verificar-email?token=${token}`;
@@ -196,7 +268,6 @@ async function enviarCorreoVerificacion({ to, nombre, token }) {
   }
 }
 
-// --- Correo a la estudiante: su pago fue confirmado ---
 async function enviarCorreoPagoConfirmado({ to, nombre, tipoPlan }) {
   try {
     const urlDashboard = `${process.env.FRONTEND_URL}/dashboard`;
@@ -218,7 +289,6 @@ async function enviarCorreoPagoConfirmado({ to, nombre, tipoPlan }) {
   }
 }
 
-// --- Correo a la estudiante: su voucher fue rechazado ---
 async function enviarCorreoPagoRechazado({ to, nombre, motivo }) {
   try {
     const urlInscripcion = `${process.env.FRONTEND_URL}/inscripcion`;
@@ -240,7 +310,6 @@ async function enviarCorreoPagoRechazado({ to, nombre, motivo }) {
   }
 }
 
-// --- Correo a la estudiante: su diploma ya está listo ---
 async function enviarCorreoDiplomaListo({ to, nombre, codigoVerificacion }) {
   try {
     const urlDiploma = `${process.env.FRONTEND_URL}/diploma`;
@@ -262,7 +331,6 @@ async function enviarCorreoDiplomaListo({ to, nombre, codigoVerificacion }) {
   }
 }
 
-// --- Correo a la estudiante: recuperar contraseña ---
 async function enviarCorreoRecuperacion({ to, nombre, token }) {
   try {
     const urlRestablecer = `${process.env.FRONTEND_URL}/restablecer-password?token=${token}`;
@@ -284,7 +352,6 @@ async function enviarCorreoRecuperacion({ to, nombre, token }) {
   }
 }
 
-// --- Notificación interna: falta generar el balance del mes anterior ---
 async function notificarBalancePendiente({ mes, anio }) {
   try {
     const nombresMeses = [
@@ -343,6 +410,7 @@ module.exports = {
   notificarNuevoVoucher,
   notificarBalancePendiente,
   enviarSolicitudEmpresarial,
+  notificarEstudianteListaParaPractica,
   enviarCorreoVerificacion,
   enviarCorreoPagoConfirmado,
   enviarCorreoPagoRechazado,

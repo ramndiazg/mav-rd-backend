@@ -1,11 +1,12 @@
 const IntentoExamen = require("../models/IntentoExamen");
 const Sesion = require("../models/Sesion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
+const Inscripcion = require("../models/Inscripcion");
 const { intentarDesbloquear } = require("./examenController");
+const {
+  notificarEstudianteListaParaPractica,
+} = require("../utils/notificaciones");
 
-// GET /api/intentos-examen/activo/:sesionId
-// Devuelve el intento sin entregar más reciente de la estudiante para esa
-// sesión, o 404 si no hay ninguno pendiente.
 async function obtenerIntentoActivo(req, res, next) {
   try {
     const { sesionId } = req.params;
@@ -30,9 +31,6 @@ async function obtenerIntentoActivo(req, res, next) {
   }
 }
 
-// GET /api/intentos-examen/estudiante/:userId — coordinadora/admin
-// Todos los intentos de una estudiante, en todas las sesiones — para la
-// pestaña "Estudiantes" del panel (ver si pagó, si aprobó, con qué nota).
 async function obtenerIntentosDeEstudiante(req, res, next) {
   try {
     const { userId } = req.params;
@@ -47,10 +45,6 @@ async function obtenerIntentosDeEstudiante(req, res, next) {
   }
 }
 
-// GET /api/intentos-examen/historial/:sesionId
-// Todos los intentos (entregados o no) de la estudiante para esa sesión, para
-// que el frontend decida si mostrar "Reintentar examen" (reprobó y le quedan
-// intentos) sin tener que adivinar el estado.
 async function obtenerHistorial(req, res, next) {
   try {
     const { sesionId } = req.params;
@@ -66,10 +60,6 @@ async function obtenerHistorial(req, res, next) {
   }
 }
 
-// GET /api/intentos-examen/:id/detalle
-// Detalle pregunta por pregunta de un intento YA ENTREGADO: qué marcó la
-// estudiante vs. cuál era la correcta, para pintar verde/rojo en el frontend.
-// No se expone nada de esto mientras el intento sigue en curso (fechaFin null).
 async function obtenerDetalleIntento(req, res, next) {
   try {
     const intento = await IntentoExamen.findById(req.params.id).populate(
@@ -116,12 +106,6 @@ async function obtenerDetalleIntento(req, res, next) {
   }
 }
 
-// POST /api/intentos-examen/reintentar/:sesionId
-// Autoservicio: la estudiante ya vio el contenido, así que no tiene sentido
-// pedirle que lo vea de nuevo para reprobar/reintentar. Este mismo endpoint
-// también es el que el frontend llama cuando termina la cuenta regresiva de
-// 24h para tomar el examen de la sesión siguiente por primera vez (no es
-// solo para reintentar una sesión ya reprobada).
 async function reintentarExamen(req, res, next) {
   try {
     const { sesionId } = req.params;
@@ -129,7 +113,7 @@ async function reintentarExamen(req, res, next) {
     const resultado = await intentarDesbloquear({
       sesionId,
       userId: req.usuario._id,
-      desbloqueadoPor: req.usuario._id, // se autodesbloquea
+      desbloqueadoPor: req.usuario._id,
     });
 
     if (!resultado.ok) {
@@ -147,7 +131,6 @@ async function reintentarExamen(req, res, next) {
   }
 }
 
-// POST /api/intentos-examen/:id/iniciar — estudiante inicia su intento (arranca el timer)
 async function iniciarIntento(req, res, next) {
   try {
     const intento = await IntentoExamen.findById(req.params.id).populate(
@@ -247,11 +230,6 @@ async function entregarIntento(req, res, next) {
     intento.fechaFin = new Date();
     await intento.save();
 
-    // Si aprobó: 1) se guarda la fecha de aprobación (dispara la espera de
-    // 24h para el EXAMEN de la sesión siguiente), y 2) se adelanta
-    // sesionActualDesbloqueada de inmediato para que la TEORÍA de la
-    // siguiente sesión sea accesible ya mismo, sin esperar esas 24h — son
-    // dos cosas separadas a propósito (ver examenController.js).
     let proximaSesionDisponibleEn = null;
     if (aprobado) {
       const progreso = await ProgresoEstudiante.findOne({
@@ -259,6 +237,11 @@ async function entregarIntento(req, res, next) {
       });
       if (progreso) {
         const sesionDoc = await Sesion.findById(intento.sesionId);
+
+        // NUEVO: se guarda ANTES de tocar cursoCompletado, para poder
+        // detectar la transición false -> true y no volver a notificar en
+        // guardados posteriores (por ejemplo si algo más recalcula progreso).
+        const completadoAntes = progreso.cursoCompletado;
 
         if (
           sesionDoc &&
@@ -279,15 +262,11 @@ async function entregarIntento(req, res, next) {
             });
           }
 
-          // Adelanta el acceso a la teoría de la siguiente sesión de
-          // inmediato (máximo 4, no hay Sesión 5). Ampliado de 3 a 4 el
-          // 06/08/2026 — ver HISTORIAL_MODIFICACIONES.md.
           const siguienteSesion = Math.min(sesionDoc.numero + 1, 4);
           if (siguienteSesion > progreso.sesionActualDesbloqueada) {
             progreso.sesionActualDesbloqueada = siguienteSesion;
           }
 
-          // Solo hay "próxima sesión" con espera si no era ya la última.
           if (sesionDoc.numero < 4) {
             proximaSesionDisponibleEn = new Date(
               fechaAprobacion.getTime() + 24 * 60 * 60 * 1000,
@@ -299,6 +278,26 @@ async function entregarIntento(req, res, next) {
           progreso.cursoCompletado = true;
         }
         await progreso.save();
+
+        // NUEVO (05/09/2026): recién ahora terminó toda la teoría —
+        // notificar a los choferes activos y a DestinatarioPractica. Sin
+        // await a propósito, igual que enviarCorreoDiplomaListo — no debe
+        // demorar la respuesta a la estudiante.
+        if (!completadoAntes && progreso.cursoCompletado) {
+          const inscripcion = await Inscripcion.findOne({
+            userId: intento.userId,
+            estadoPago: "pagado",
+          });
+
+          notificarEstudianteListaParaPractica({
+            nombre: req.usuario.nombre,
+            apellido: req.usuario.apellido,
+            cedula: req.usuario.cedula,
+            telefono: req.usuario.telefono,
+            email: req.usuario.email,
+            tipoPlan: inscripcion?.tipoPlan || "desconocido",
+          });
+        }
       }
     }
 

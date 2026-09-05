@@ -17,8 +17,10 @@ const userSchema = new mongoose.Schema(
     provincia: { type: String, required: true },
     fechaNacimiento: { type: Date, required: true },
     rol: {
+      // NUEVO: "conductor" (05/09/2026) — chofer que aprueba la práctica
+      // antes de que la estudiante pueda recibir su diploma.
       type: String,
-      enum: ["estudiante", "coordinadora", "admin"],
+      enum: ["estudiante", "coordinadora", "admin", "conductor"],
       default: "estudiante",
     },
     activo: { type: Boolean, default: true },
@@ -28,7 +30,7 @@ const userSchema = new mongoose.Schema(
     tokenVerificacionEmail: { type: String, default: null },
     tokenVerificacionExpira: { type: Date, default: null },
 
-    // --- NUEVO: recuperación de contraseña ---
+    // --- Recuperación de contraseña ---
     tokenRecuperacion: { type: String, default: null },
     tokenRecuperacionExpira: { type: Date, default: null },
   },

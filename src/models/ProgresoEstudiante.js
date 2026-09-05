@@ -8,22 +8,28 @@ const progresoSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
-    sesionActualDesbloqueada: { type: Number, default: 0 }, // 0 = ninguna todavía
+    sesionActualDesbloqueada: { type: Number, default: 0 },
     sesionesAprobadas: { type: [Number], default: [] },
     cursoCompletado: { type: Boolean, default: false },
-    // ids de ContenidoSesion que la estudiante ya marcó como vistos.
-    // Cuando todos los contenidos activos de una sesión están aquí, el
-    // backend desbloquea el examen de esa sesión automáticamente.
     contenidosVistos: {
       type: [{ type: mongoose.Schema.Types.ObjectId, ref: "ContenidoSesion" }],
       default: [],
     },
-    // NUEVO: fecha exacta en que se aprobó cada sesión (por número de
-    // sesión). Necesario para calcular la espera mínima de 24h antes de
-    // habilitar el examen de la siguiente sesión.
     fechasAprobacionSesion: {
       type: [{ sesion: Number, fecha: Date }],
       default: [],
+    },
+
+    // NUEVO (05/09/2026): seguimiento de práctica. cursoCompletado marca
+    // que terminó la teoría (4 sesiones + 4 exámenes); practicaAprobada es
+    // un paso adicional y separado que confirma un chofer real, y es
+    // requisito para poder generar el diploma (ver diplomaController.js).
+    practicaAprobada: { type: Boolean, default: false },
+    fechaAprobacionPractica: { type: Date, default: null },
+    practicaAprobadaPor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
   },
   { timestamps: true },

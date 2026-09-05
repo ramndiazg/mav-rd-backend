@@ -25,12 +25,14 @@ async function listarTodos(req, res, next) {
   }
 }
 
-// GET /api/diplomas/elegibles — coordinadora/admin: estudiantes que completaron
-// el curso y todavía no tienen diploma generado
+// GET /api/diplomas/elegibles — coordinadora/admin: estudiantes que
+// completaron el curso Y tienen la práctica aprobada por un chofer, y
+// todavía no tienen diploma generado.
 async function listarElegibles(req, res, next) {
   try {
     const progresosCompletados = await ProgresoEstudiante.find({
       cursoCompletado: true,
+      practicaAprobada: true, // NUEVO (05/09/2026)
     });
     const userIds = progresosCompletados.map((p) => p.userId);
 
@@ -66,11 +68,13 @@ async function generarDiploma(req, res, next) {
     }
 
     const progreso = await ProgresoEstudiante.findOne({ userId });
-    if (!progreso || !progreso.cursoCompletado) {
+    // NUEVO (05/09/2026): ya no basta con la teoría — también se exige
+    // practicaAprobada (confirmada por un chofer, ver practicaController.js).
+    if (!progreso || !progreso.cursoCompletado || !progreso.practicaAprobada) {
       return res.status(400).json({
         success: false,
         error:
-          "Esta estudiante todavía no ha completado y aprobado las 3 sesiones.",
+          "Esta estudiante todavía no ha completado la teoría o no tiene su práctica aprobada por un instructor.",
       });
     }
 
@@ -113,7 +117,6 @@ async function generarDiploma(req, res, next) {
       publicIdCloudinary: resultadoSubida.public_id,
     });
 
-    // Sin await a propósito: no debe demorar la respuesta a la coordinadora.
     enviarCorreoDiplomaListo({
       to: estudiante.email,
       nombre: estudiante.nombre,
