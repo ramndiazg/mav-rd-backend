@@ -20,6 +20,7 @@ const destinatarioRoutes = require("./routes/destinatarioRoutes");
 const empresasRoutes = require("./routes/empresasRoutes");
 const chatbotRoutes = require("./routes/chatbotRoutes");
 const resumenRoutes = require("./routes/resumenRoutes");
+const testPsicologicoRoutes = require("./routes/testPsicologicoRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -76,6 +77,7 @@ app.use("/api/destinatarios", destinatarioRoutes);
 app.use("/api/empresas", empresasRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/interno", resumenRoutes);
+app.use("/api/test-psicologico", testPsicologicoRoutes);
 
 // Cualquier ruta no encontrada
 app.use((req, res) => {
