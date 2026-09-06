@@ -18,7 +18,9 @@ async function listarInstructoresActivos(req, res, next) {
   try {
     const instructores = await Instructor.find({ activo: true })
       .select("diasDisponibles userId")
-      .populate("userId", "nombre apellido telefono email");
+      // NUEVO: se agrega provincia — para que la estudiante vea si el
+      // chofer está lejos antes de contactarlo (06/09/2026).
+      .populate("userId", "nombre apellido telefono email provincia");
     res.json({ success: true, data: instructores });
   } catch (error) {
     next(error);
