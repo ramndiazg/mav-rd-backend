@@ -32,7 +32,7 @@ const PLANES = [
     programa: "estandar",
     codigo: "fundacion",
     nombre: "Plan de la Fundación Mujeres al Volante",
-    precio: 1500,
+    precio: 1000,
     fraseDestacada:
       "La puerta de entrada a la educación vial, con el respaldo de nuestra fundación.",
     modalidadPractica: "grupal",
@@ -52,7 +52,7 @@ const PLANES = [
   {
     programa: "estandar",
     codigo: "normal",
-    nombre: "Plan Normal",
+    nombre: "Plan Estándar",
     precio: 4500,
     fraseDestacada: "Tu ritmo, tu instructor, tu manera de aprender a manejar.",
     modalidadPractica: "individual",

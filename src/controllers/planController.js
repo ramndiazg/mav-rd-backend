@@ -1,5 +1,18 @@
 const Plan = require("../models/Plan");
 
+// GET /api/planes/admin/todos?programa=estandar — solo admin. A diferencia
+// de listarPlanes (pública), esta SÍ incluye los planes con activo: false,
+// para que la UI de admin pueda reactivarlos.
+async function listarPlanesAdmin(req, res, next) {
+  try {
+    const programa = req.query.programa || "estandar";
+    const planes = await Plan.find({ programa }).sort({ orden: 1 });
+    res.json({ success: true, data: planes });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // GET /api/planes?programa=estandar — público, lo usan el Home y
 // /inscripcion. Sin ?programa, asume "estandar" (hoy el único que existe).
 async function listarPlanes(req, res, next) {
@@ -64,4 +77,9 @@ async function actualizarPlan(req, res, next) {
   }
 }
 
-module.exports = { listarPlanes, obtenerPlan, actualizarPlan };
+module.exports = {
+  listarPlanes,
+  listarPlanesAdmin,
+  obtenerPlan,
+  actualizarPlan,
+};
