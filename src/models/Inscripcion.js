@@ -7,7 +7,18 @@ const inscripcionSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    tipoPlan: { type: String, enum: ["normal", "vip"], required: true },
+    // Qué currículo cursa esta inscripción — hoy siempre "estandar" (es el
+    // único programa que existe), pero se deja listo para cuando existan
+    // escolar/empresarial/motorista. Deliberadamente separado de tipoPlan:
+    // tipoPlan es el nivel de práctica/precio DENTRO de un programa, no el
+    // programa en sí.
+    programa: { type: String, required: true, default: "estandar" },
+
+    tipoPlan: {
+      type: String,
+      enum: ["fundacion", "normal", "vip"],
+      required: true,
+    },
     monto: { type: Number, required: true },
     estadoPago: {
       type: String,

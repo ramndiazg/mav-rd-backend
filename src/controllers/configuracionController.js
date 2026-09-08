@@ -1,10 +1,13 @@
 const Configuracion = require("../models/Configuracion");
 
-// Valores por defecto si aún no existen en la base de datos
-const DEFAULTS = {
-  precio_plan_normal: 0,
-  precio_plan_vip: 0,
-};
+// Valores por defecto si aún no existen en la base de datos.
+// NOTA (migración de planes, 06/09/2026): precio_plan_normal y
+// precio_plan_vip vivían aquí — ahora los precios y el resto de atributos
+// de cada plan (Fundación/Normal/VIP) viven en la colección Plan, expuesta
+// vía GET /api/planes. Los registros viejos de Configuracion con esas
+// claves quedan huérfanos en la base (no se borran automáticamente) pero
+// ya no los lee ningún endpoint.
+const DEFAULTS = {};
 
 // GET /api/configuracion — público (el frontend necesita mostrar precios)
 async function obtenerConfiguracion(req, res, next) {
