@@ -320,5 +320,6 @@ module.exports = {
   generarDiploma,
   verificarDiploma,
   obtenerMiDiploma,
+  descargarMiDiploma,
   descargarDiplomaPorId,
 };
