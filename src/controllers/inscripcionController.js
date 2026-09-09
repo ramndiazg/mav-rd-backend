@@ -1,7 +1,7 @@
 const Inscripcion = require("../models/Inscripcion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const MovimientoContable = require("../models/MovimientoContable");
-const Configuracion = require("../models/Configuracion");
+const Plan = require("../models/Plan");
 const User = require("../models/User");
 const {
   notificarNuevoVoucher,
@@ -21,10 +21,11 @@ async function crearInscripcion(req, res, next) {
       });
     }
 
-    if (!["normal", "vip"].includes(tipoPlan)) {
-      return res
-        .status(400)
-        .json({ success: false, error: 'tipoPlan debe ser "normal" o "vip".' });
+    if (!["fundacion", "normal", "vip"].includes(tipoPlan)) {
+      return res.status(400).json({
+        success: false,
+        error: 'tipoPlan debe ser "fundacion", "normal" o "vip".',
+      });
     }
 
     const existente = await Inscripcion.findOne({
@@ -214,10 +215,11 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
       });
     }
 
-    if (!["normal", "vip"].includes(tipoPlan)) {
-      return res
-        .status(400)
-        .json({ success: false, error: 'tipoPlan debe ser "normal" o "vip".' });
+    if (!["fundacion", "normal", "vip"].includes(tipoPlan)) {
+      return res.status(400).json({
+        success: false,
+        error: 'tipoPlan debe ser "fundacion", "normal" o "vip".',
+      });
     }
 
     if (!req.usuario.emailVerificado) {
@@ -244,16 +246,19 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
       });
     }
 
-    const clave = tipoPlan === "vip" ? "precio_plan_vip" : "precio_plan_normal";
-    const config = await Configuracion.findOne({ clave });
-    if (!config) {
+    const plan = await Plan.findOne({
+      codigo: tipoPlan,
+      programa: "estandar",
+      activo: true,
+    });
+    if (!plan) {
       return res.status(500).json({
         success: false,
         error:
           "El precio del plan no está configurado todavía. Contacta a la administración.",
       });
     }
-    const monto = config.valor;
+    const monto = plan.precio;
 
     const datosInscripcion = {
       userId,

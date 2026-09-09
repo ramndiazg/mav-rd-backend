@@ -5,6 +5,13 @@ const Inscripcion = require("../models/Inscripcion");
 // GET /api/practica/pendientes — conductor/admin: estudiantes que
 // terminaron la teoría (4 sesiones + 4 exámenes) y todavía esperan que un
 // chofer confirme su práctica.
+//
+// NUEVO (09/09/2026): estudiantes de un Grupo (Escolar/Empresarial) no
+// cursan práctica de manejo — sin este filtro, cursoCompletado se vuelve
+// true para ellas igual que cualquier otra estudiante, pero
+// practicaAprobada nunca se vuelve true (nadie la aprueba, no aplica),
+// así que se quedaban apareciendo aquí para siempre. Mismo criterio que
+// diplomaController.js/intentoExamenController.js/sesionController.js.
 async function listarPendientes(req, res, next) {
   try {
     const progresos = await ProgresoEstudiante.find({
@@ -16,7 +23,7 @@ async function listarPendientes(req, res, next) {
 
     const [usuarios, inscripciones] = await Promise.all([
       User.find({ _id: { $in: userIds } }).select(
-        "nombre apellido cedula telefono email",
+        "nombre apellido cedula telefono email grupoId",
       ),
       Inscripcion.find({
         userId: { $in: userIds },
@@ -29,23 +36,25 @@ async function listarPendientes(req, res, next) {
       inscripciones.map((i) => [String(i.userId), i.tipoPlan]),
     );
 
-    const data = progresos.map((p) => {
-      const usuario = usuariosPorId.get(String(p.userId));
-      const fechaCompletado = p.fechasAprobacionSesion.find(
-        (f) => f.sesion === 4,
-      )?.fecha;
+    const data = progresos
+      .filter((p) => !usuariosPorId.get(String(p.userId))?.grupoId)
+      .map((p) => {
+        const usuario = usuariosPorId.get(String(p.userId));
+        const fechaCompletado = p.fechasAprobacionSesion.find(
+          (f) => f.sesion === 4,
+        )?.fecha;
 
-      return {
-        userId: p.userId,
-        nombre: usuario?.nombre,
-        apellido: usuario?.apellido,
-        cedula: usuario?.cedula,
-        telefono: usuario?.telefono,
-        email: usuario?.email,
-        tipoPlan: planPorUsuario.get(String(p.userId)) || null,
-        fechaCompletado: fechaCompletado || null,
-      };
-    });
+        return {
+          userId: p.userId,
+          nombre: usuario?.nombre,
+          apellido: usuario?.apellido,
+          cedula: usuario?.cedula,
+          telefono: usuario?.telefono,
+          email: usuario?.email,
+          tipoPlan: planPorUsuario.get(String(p.userId)) || null,
+          fechaCompletado: fechaCompletado || null,
+        };
+      });
 
     res.json({ success: true, data });
   } catch (error) {

@@ -352,6 +352,44 @@ async function enviarCorreoRecuperacion({ to, nombre, token }) {
   }
 }
 
+// NUEVO (09/09/2026): credenciales para estudiantes creadas en bloque por
+// un Grupo (Escolar/Empresarial) — nunca pasan por /registro, así que no
+// hay contraseña que ellas mismas hayan elegido. Se les manda su correo +
+// una contraseña generada, que pueden cambiar después desde
+// /auth/cambiar-password. Distinto de enviarCorreoVerificacion (esa manda
+// un link, no una contraseña en texto plano) — aquí no hay nada que
+// verificar, la cuenta ya se crea con emailVerificado: true.
+async function enviarCorreoCredencialesGrupo({
+  to,
+  nombre,
+  password,
+  nombreInstitucion,
+}) {
+  try {
+    const urlLogin = `${process.env.FRONTEND_URL}/login`;
+    await enviarEmailResend({
+      to,
+      subject: "Ya tienes acceso a tu curso — Muvo RD Vial",
+      html: plantillaCorreo({
+        titulo: `¡Hola, ${nombre}!`,
+        cuerpoHtml: `
+          <p>${nombreInstitucion} te inscribió en el curso de Muvo RD Vial. Ya puedes entrar con estos datos:</p>
+          <p><strong>Correo:</strong> ${to}<br/>
+          <strong>Contraseña:</strong> ${password}</p>
+          <p style="color:#6B7280;font-size:12px;">Puedes cambiar tu contraseña desde tu panel una vez inicies sesión.</p>
+        `,
+        botonTexto: "Iniciar sesión",
+        botonUrl: urlLogin,
+      }),
+    });
+  } catch (err) {
+    console.error(
+      `No se pudo enviar el correo de credenciales a ${to} —`,
+      err.message,
+    );
+  }
+}
+
 async function notificarBalancePendiente({ mes, anio }) {
   try {
     const nombresMeses = [
@@ -416,4 +454,5 @@ module.exports = {
   enviarCorreoPagoRechazado,
   enviarCorreoDiplomaListo,
   enviarCorreoRecuperacion,
+  enviarCorreoCredencialesGrupo,
 };

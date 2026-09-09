@@ -26,6 +26,7 @@ const chatbotRoutes = require("./routes/chatbotRoutes");
 const resumenRoutes = require("./routes/resumenRoutes");
 const testPsicologicoRoutes = require("./routes/testPsicologicoRoutes");
 const informacionComplementariaEscolarRoutes = require("./routes/informacionComplementariaEscolarRoutes");
+const grupoRoutes = require("./routes/grupoRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -91,6 +92,7 @@ app.use(
   "/api/informacion-complementaria-escolar",
   informacionComplementariaEscolarRoutes,
 );
+app.use("/api/grupos", grupoRoutes);
 
 // Cualquier ruta no encontrada
 app.use((req, res) => {

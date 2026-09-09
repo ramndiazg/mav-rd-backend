@@ -1,0 +1,21 @@
+name: Reporte diario de grupos
+
+# 10:00 AM hora de Santo Domingo (AST, UTC-4, sin DST) = 14:00 UTC.
+# GitHub Actions usa UTC siempre en el cron. Ver
+# ESPECIFICACION_PROGRAMAS_NUEVOS.md sección 4.
+on:
+  schedule:
+    - cron: "0 14 * * *"
+  # Permite dispararlo a mano desde la pestaña Actions de GitHub, útil
+  # para probar sin esperar a la hora programada.
+  workflow_dispatch:
+
+jobs:
+  ejecutar-reporte-grupos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar al endpoint del reporte de grupos
+        run: |
+          curl -f -X POST "https://mav-rd-backend.onrender.com/api/interno/reporte-grupos" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            --max-time 60

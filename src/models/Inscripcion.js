@@ -15,8 +15,15 @@ const inscripcionSchema = new mongoose.Schema(
     programa: { type: String, required: true, default: "estandar" },
 
     tipoPlan: {
+      // NUEVO (09/09/2026): "grupo" es exclusivo de estudiantes inscritas
+      // en bloque por un Grupo (Escolar/Empresarial, ver Grupo.js) — no
+      // tienen un nivel individual de plan como fundacion/normal/vip, el
+      // precio es uno solo negociado con la institución
+      // (Grupo.precioAcordado) y prorrateado entre el roster real al
+      // confirmarlo (ver grupoController.js). No pasa por la colección
+      // Plan en absoluto.
       type: String,
-      enum: ["fundacion", "normal", "vip"],
+      enum: ["fundacion", "normal", "vip", "grupo"],
       required: true,
     },
     monto: { type: Number, required: true },
