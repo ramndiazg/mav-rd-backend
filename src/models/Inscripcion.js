@@ -49,7 +49,18 @@ const inscripcionSchema = new mongoose.Schema(
     bancoEmisor: { type: String, default: null },
     numeroReferencia: {
       type: String,
-      default: null,
+      // BUG CORREGIDO (09/09/2026): tenía "default: null", que rompe el
+      // propósito de "sparse" — un índice sparse solo excluye documentos
+      // donde el campo está AUSENTE, no donde vale null explícito. Con el
+      // default puesto, toda Inscripcion creada sin voucher (flujo
+      // "efectivo" del admin, y ahora también cada estudiante de un
+      // Grupo) terminaba con numeroReferencia: null guardado de verdad,
+      // así que la segunda de esas chocaba contra la primera como
+      // "duplicado". Sin default, mongoose deja el campo genuinamente
+      // undefined cuando no se manda, y el índice sparse las excluye a
+      // todas correctamente — la unicidad solo aplica cuando SÍ hay un
+      // número de referencia real.
+      default: undefined,
       unique: true,
       sparse: true, // el índice único solo aplica cuando el campo existe
     },
