@@ -1,6 +1,8 @@
 const Sesion = require("../models/Sesion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const TestPsicologico = require("../models/TestPsicologico");
+const InformacionComplementariaEscolar = require("../models/InformacionComplementariaEscolar");
+const Grupo = require("../models/Grupo");
 
 // GET /api/sesiones — coordinadora/admin: lista completa con contenido, para gestión
 async function listarSesiones(req, res, next) {
@@ -19,20 +21,48 @@ async function listarSesiones(req, res, next) {
 // entrada real al contenido de una sesión, así que bloquear aquí cubre
 // tanto la pantalla del dashboard como cualquier intento de llamar a la
 // API directo sin pasar por el frontend.
+//
+// ACTUALIZADO (08/09/2026): el cuestionario exigido ya no es siempre
+// TestPsicologico. Si el estudiante pertenece a un Grupo de tipo
+// "colegio" (programa Escolar), se exige InformacionComplementariaEscolar
+// en su lugar — nunca ambos, y nunca el framing de "test psicológico"
+// para estas estudiantes. Para todo lo demás (grupoId null, o Grupo de
+// tipo "empresa"), sigue exigiendo TestPsicologico igual que hoy.
 async function obtenerSesionParaEstudiante(req, res, next) {
   try {
     const numero = Number(req.params.numero);
 
-    const testCompletado = await TestPsicologico.exists({
-      userId: req.usuario._id,
-    });
-    if (!testCompletado) {
-      return res.status(403).json({
-        success: false,
-        error:
-          "Debes completar el cuestionario de perfil antes de acceder al contenido.",
-        codigo: "TEST_PSICOLOGICO_PENDIENTE",
+    let esEscolar = false;
+    if (req.usuario.grupoId) {
+      const grupo = await Grupo.findById(req.usuario.grupoId).select("tipo");
+      esEscolar = grupo?.tipo === "colegio";
+    }
+
+    if (esEscolar) {
+      const cuestionarioCompletado =
+        await InformacionComplementariaEscolar.exists({
+          userId: req.usuario._id,
+        });
+      if (!cuestionarioCompletado) {
+        return res.status(403).json({
+          success: false,
+          error:
+            "Debes completar el cuestionario de perfil antes de acceder al contenido.",
+          codigo: "INFORMACION_COMPLEMENTARIA_ESCOLAR_PENDIENTE",
+        });
+      }
+    } else {
+      const testCompletado = await TestPsicologico.exists({
+        userId: req.usuario._id,
       });
+      if (!testCompletado) {
+        return res.status(403).json({
+          success: false,
+          error:
+            "Debes completar el cuestionario de perfil antes de acceder al contenido.",
+          codigo: "TEST_PSICOLOGICO_PENDIENTE",
+        });
+      }
     }
 
     const progreso = await ProgresoEstudiante.findOne({

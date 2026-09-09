@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const User = require("../models/User");
+const Grupo = require("../models/Grupo");
 const {
   enviarCorreoVerificacion,
   enviarCorreoRecuperacion,
@@ -18,6 +19,23 @@ function generarToken(userId) {
 
 function generarTokenAleatorio() {
   return crypto.randomBytes(32).toString("hex");
+}
+
+// NUEVO (08/09/2026): agrega grupoTipo ("colegio" | "empresa" | null) al
+// objeto de usuario que se manda al frontend, para que pueda decidir sin
+// un segundo fetch si le toca TestPsicologico o
+// InformacionComplementariaEscolar, y si le aplica el gate de práctica.
+// Recibe un documento de Mongoose (con .toObject()) y devuelve un objeto
+// plano listo para responder como JSON.
+async function conGrupoTipo(usuarioDoc) {
+  const usuarioPlano = usuarioDoc.toObject ? usuarioDoc.toObject() : usuarioDoc;
+
+  if (!usuarioPlano.grupoId) {
+    return { ...usuarioPlano, grupoTipo: null };
+  }
+
+  const grupo = await Grupo.findById(usuarioPlano.grupoId).select("tipo");
+  return { ...usuarioPlano, grupoTipo: grupo?.tipo || null };
 }
 
 // POST /api/auth/registro — cuenta gratuita de estudiante
@@ -82,9 +100,13 @@ async function registro(req, res, next) {
 
     const token = generarToken(nuevoUsuario._id);
 
-    res
-      .status(201)
-      .json({ success: true, data: { usuario: nuevoUsuario, token } });
+    // NUEVO (08/09/2026): grupoId siempre es null justo después de un
+    // autoregistro (nadie se autoregistra ya dentro de un Grupo), pero se
+    // usa conGrupoTipo() igual por consistencia con login/perfil.
+    res.status(201).json({
+      success: true,
+      data: { usuario: await conGrupoTipo(nuevoUsuario), token },
+    });
   } catch (error) {
     next(error);
   }
@@ -313,7 +335,10 @@ async function login(req, res, next) {
       "-passwordHash",
     );
 
-    res.json({ success: true, data: { usuario: usuarioSinHash, token } });
+    res.json({
+      success: true,
+      data: { usuario: await conGrupoTipo(usuarioSinHash), token },
+    });
   } catch (error) {
     next(error);
   }
@@ -325,7 +350,10 @@ async function perfil(req, res) {
   if (req.usuario.rol === "admin") {
     verificarYNotificarBalancePendiente();
   }
-  res.json({ success: true, data: { usuario: req.usuario } });
+  res.json({
+    success: true,
+    data: { usuario: await conGrupoTipo(req.usuario) },
+  });
 }
 
 module.exports = {

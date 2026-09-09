@@ -25,6 +25,18 @@ const userSchema = new mongoose.Schema(
     },
     activo: { type: Boolean, default: true },
 
+    // NUEVO (08/09/2026): referencia al Grupo (colegio/empresa) cuando el
+    // estudiante fue inscrito en bloque por una institución. null para
+    // todos los estudiantes que se autoregistran (flujo actual, sin
+    // cambios). Determina si se le exige práctica de manejo para el
+    // diploma (ver gate en diplomaController.js) y si su cuestionario
+    // previo al curso es TestPsicologico o InformacionComplementariaEscolar.
+    grupoId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Grupo",
+      default: null,
+    },
+
     // --- Verificación de email ---
     emailVerificado: { type: Boolean, default: false },
     tokenVerificacionEmail: { type: String, default: null },

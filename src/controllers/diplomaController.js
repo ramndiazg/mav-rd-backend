@@ -26,27 +26,56 @@ async function listarTodos(req, res, next) {
 }
 
 // GET /api/diplomas/elegibles — coordinadora/admin: estudiantes que
-// completaron el curso Y tienen la práctica aprobada por un chofer, y
-// todavía no tienen diploma generado.
+// completaron el curso Y (si les aplica) tienen la práctica aprobada por
+// un chofer, y todavía no tienen diploma generado.
 async function listarElegibles(req, res, next) {
   try {
     const progresosCompletados = await ProgresoEstudiante.find({
       cursoCompletado: true,
-      practicaAprobada: true, // NUEVO (05/09/2026)
     });
     const userIds = progresosCompletados.map((p) => p.userId);
 
+    // Necesitamos grupoId de cada estudiante para saber si le aplica el
+    // gate de práctica, así que traemos los usuarios antes de filtrar.
+    const usuarios = await User.find({ _id: { $in: userIds } }).select(
+      "nombre apellido cedula email grupoId",
+    );
+    const usuarioPorId = new Map(usuarios.map((u) => [String(u._id), u]));
+
+    // NUEVO (08/09/2026): estudiantes de un Grupo (Escolar/Empresarial)
+    // no cursan práctica de manejo — el gate salta directo a
+    // cursoCompletado. El resto (grupoId null, flujo estándar) sigue
+    // exigiendo practicaAprobada, igual que antes del 05/09/2026.
+    const idsElegiblesPorProgreso = progresosCompletados
+      .filter((progreso) => {
+        const usuario = usuarioPorId.get(String(progreso.userId));
+        if (!usuario) return false;
+        const requierePractica = !usuario.grupoId;
+        return !requierePractica || progreso.practicaAprobada;
+      })
+      .map((p) => p.userId);
+
     const diplomasExistentes = await Diploma.find({
-      userId: { $in: userIds },
+      userId: { $in: idsElegiblesPorProgreso },
     }).select("userId");
     const idsConDiploma = new Set(
       diplomasExistentes.map((d) => String(d.userId)),
     );
 
-    const idsElegibles = userIds.filter((id) => !idsConDiploma.has(String(id)));
-    const estudiantes = await User.find({ _id: { $in: idsElegibles } }).select(
-      "nombre apellido cedula email",
+    const idsElegibles = idsElegiblesPorProgreso.filter(
+      (id) => !idsConDiploma.has(String(id)),
     );
+
+    const estudiantes = idsElegibles
+      .map((id) => usuarioPorId.get(String(id)))
+      .filter(Boolean)
+      .map(({ _id, nombre, apellido, cedula, email }) => ({
+        _id,
+        nombre,
+        apellido,
+        cedula,
+        email,
+      }));
 
     res.json({ success: true, data: estudiantes });
   } catch (error) {
@@ -67,22 +96,33 @@ async function generarDiploma(req, res, next) {
       });
     }
 
-    const progreso = await ProgresoEstudiante.findOne({ userId });
-    // NUEVO (05/09/2026): ya no basta con la teoría — también se exige
-    // practicaAprobada (confirmada por un chofer, ver practicaController.js).
-    if (!progreso || !progreso.cursoCompletado || !progreso.practicaAprobada) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Esta estudiante todavía no ha completado la teoría o no tiene su práctica aprobada por un instructor.",
-      });
-    }
-
     const estudiante = await User.findById(userId);
     if (!estudiante) {
       return res
         .status(404)
         .json({ success: false, error: "Estudiante no encontrada." });
+    }
+
+    const progreso = await ProgresoEstudiante.findOne({ userId });
+
+    // NUEVO (08/09/2026): estudiantes inscritas por un Grupo (Escolar/
+    // Empresarial) no cursan práctica de manejo, así que el gate salta
+    // directo a cursoCompletado. Todas las demás (grupoId null, flujo
+    // estándar) siguen exigiendo practicaAprobada, igual que antes.
+    const requierePractica = !estudiante.grupoId;
+    const elegible =
+      progreso &&
+      progreso.cursoCompletado &&
+      (!requierePractica || progreso.practicaAprobada);
+
+    if (!elegible) {
+      const mensaje = requierePractica
+        ? "Esta estudiante todavía no ha completado la teoría o no tiene su práctica aprobada por un instructor."
+        : "Esta estudiante todavía no ha completado la teoría del curso.";
+      return res.status(400).json({
+        success: false,
+        error: mensaje,
+      });
     }
 
     const sesiones = await Sesion.find({
@@ -280,6 +320,5 @@ module.exports = {
   generarDiploma,
   verificarDiploma,
   obtenerMiDiploma,
-  descargarMiDiploma,
   descargarDiplomaPorId,
 };
