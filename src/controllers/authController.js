@@ -7,6 +7,7 @@ const {
   enviarCorreoVerificacion,
   enviarCorreoRecuperacion,
 } = require("../utils/notificaciones");
+const { verificarCaptcha } = require("../utils/captcha");
 const {
   verificarYNotificarBalancePendiente,
 } = require("../utils/recordatorios");
@@ -50,7 +51,24 @@ async function registro(req, res, next) {
       password,
       provincia,
       fechaNacimiento,
+      captchaToken,
+      // NUEVO (10/09/2026): honeypot — campo invisible para una persona
+      // real (oculto por CSS en el frontend, ver registro/page.tsx), que
+      // los bots simples suelen rellenar igual porque no ejecutan CSS,
+      // solo ven el HTML del formulario. Si viene con contenido, es un
+      // bot — se responde 201 "éxito" falso (no error) para no darle al
+      // script ninguna pista de qué lo detectó, pero sin crear nada.
+      sitioWeb,
     } = req.body;
+
+    if (sitioWeb) {
+      console.warn(
+        `Registro bloqueado por honeypot — IP ${req.ip}, email: ${email || "(vacío)"}`,
+      );
+      return res
+        .status(201)
+        .json({ success: true, data: { usuario: null, token: null } });
+    }
 
     if (
       !nombre ||
@@ -65,6 +83,14 @@ async function registro(req, res, next) {
       return res
         .status(400)
         .json({ success: false, error: "Todos los campos son obligatorios." });
+    }
+
+    const captchaValido = await verificarCaptcha(captchaToken, req.ip);
+    if (!captchaValido) {
+      return res.status(400).json({
+        success: false,
+        error: "No pudimos verificar que eres una persona. Intenta de nuevo.",
+      });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -108,6 +134,21 @@ async function registro(req, res, next) {
       data: { usuario: await conGrupoTipo(nuevoUsuario), token },
     });
   } catch (error) {
+    // NUEVO (10/09/2026): mensaje genérico para el duplicado de
+    // email/cédula en ESTE endpoint específico (público, sin login) —
+    // el mensaje original ("ya existe una cuenta con ese email") permite
+    // a cualquiera comprobar, probando uno por uno, qué correos o
+    // cédulas ya están registrados en el sistema. El resto de los flujos
+    // (creación de usuarios por admin, etc.) siguen usando el mensaje
+    // específico de errorHandler.js — ahí quien pregunta ya inició
+    // sesión, no es un riesgo de enumeración anónima.
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        error:
+          "No se pudo crear la cuenta con esos datos. Verifica la información e intenta de nuevo.",
+      });
+    }
     next(error);
   }
 }

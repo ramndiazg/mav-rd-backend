@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const authRoutes = require("./routes/authRoutes");
 const configuracionRoutes = require("./routes/configuracionRoutes");
 const inscripcionRoutes = require("./routes/inscripcionRoutes");
@@ -30,6 +31,29 @@ const grupoRoutes = require("./routes/grupoRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
+
+// NUEVO (10/09/2026): Render pone la app detrás de un proxy — sin esto,
+// req.ip siempre devuelve la IP del proxy (la misma para todas las
+// requests), lo que vuelve inútil cualquier rate limiting por IP. "1"
+// confía en un solo salto de proxy (el de Render), que es lo correcto
+// aquí — no usar `true` (confiaría en cualquier cantidad de proxies,
+// permitiendo falsificar la IP vía el header X-Forwarded-For).
+app.set("trust proxy", 1);
+
+// NUEVO (10/09/2026): headers de seguridad HTTP básicos, agregados en la
+// auditoría tras el ataque de registro masivo (ver
+// ARQUITECTURA_BACKEND.md). contentSecurityPolicy desactivado a propósito
+// — es una API JSON pura, no sirve HTML, así que esa parte de helmet no
+// aplica y solo agrega ruido. crossOriginResourcePolicy en "cross-origin"
+// para no romper las llamadas fetch() del frontend (que ya están
+// controladas por la configuración de CORS de arriba, con lista fija de
+// orígenes permitidos).
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  }),
+);
 
 // Lista fija de orígenes permitidos — ya no depende de una sola
 // variable de entorno, para no perder acceso desde ningún dominio

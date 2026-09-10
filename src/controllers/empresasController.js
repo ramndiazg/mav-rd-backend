@@ -18,7 +18,17 @@ async function enviarContactoEmpresarial(req, res, next) {
       email,
       cantidadEstudiantes,
       mensaje,
+      // NUEVO (10/09/2026): honeypot, mismo patrón que
+      // authController.js#registro — ver ARQUITECTURA_BACKEND.md.
+      sitioWeb,
     } = req.body;
+
+    if (sitioWeb) {
+      console.warn(
+        `Contacto empresarial bloqueado por honeypot — IP ${req.ip}, email: ${email || "(vacío)"}`,
+      );
+      return res.json({ success: true });
+    }
 
     if (!nombreEmpresa || !contacto || !telefono || !email) {
       return res.status(400).json({
