@@ -5,11 +5,16 @@ const Instructor = require("../models/Instructor");
 
 async function listarUsuarios(req, res, next) {
   try {
-    const { rol, search, activo, conDiploma, page, limit } = req.query;
+    const { rol, search, activo, conDiploma, grupoId, page, limit } = req.query;
     const filtro = {};
 
     if (rol) filtro.rol = rol;
     if (activo !== undefined) filtro.activo = activo === "true";
+
+    // NUEVO (09/09/2026): filtrar por grupo (institución) — usado desde
+    // /panel/estudiantes para ver solo el roster de un colegio/empresa en
+    // particular, ver ARQUITECTURA_FRONTEND.md.
+    if (grupoId) filtro.grupoId = grupoId;
 
     if (search) {
       const regex = new RegExp(search, "i");
@@ -38,6 +43,10 @@ async function listarUsuarios(req, res, next) {
 
     const usuarios = await User.find(filtro)
       .select("-passwordHash")
+      // NUEVO (09/09/2026): trae nombreInstitucion/tipo del grupo para
+      // que el frontend pueda mostrar "de qué colegio/empresa es" sin una
+      // llamada aparte por cada estudiante.
+      .populate("grupoId", "nombreInstitucion tipo")
       .sort({ createdAt: -1 })
       .skip((paginaActual - 1) * limite)
       .limit(limite);
