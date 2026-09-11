@@ -201,6 +201,38 @@ async function cambiarEstado(req, res, next) {
   }
 }
 
+// NUEVO (10/09/2026): PATCH /api/usuarios/desactivar-lote — mismo soft
+// delete que cambiarEstado (nunca se borra el User, solo activo: false),
+// pero para varios estudiantes a la vez. Pedido puntual para /panel/grupos:
+// cuando el roster de una institución cambia (estudiantes que ya no
+// pertenecen al grupo), la coordinadora necesitaba poder desactivarlos
+// todos de una vez en lugar de uno por uno desde /panel/estudiantes.
+// No está limitado a estudiantes de un Grupo — recibe una lista de ids y
+// los desactiva a todos, quien la llame decide cuáles.
+async function desactivarLote(req, res, next) {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Se esperaba un arreglo 'ids' con al menos un elemento.",
+      });
+    }
+
+    const resultado = await User.updateMany(
+      { _id: { $in: ids } },
+      { activo: false },
+    );
+
+    res.json({
+      success: true,
+      data: { desactivados: resultado.modifiedCount },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function cambiarRol(req, res, next) {
   try {
     const { rol } = req.body;
@@ -230,5 +262,6 @@ module.exports = {
   crearCoordinadora,
   crearConductor,
   cambiarEstado,
+  desactivarLote,
   cambiarRol,
 };

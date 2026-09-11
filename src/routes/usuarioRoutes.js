@@ -5,6 +5,7 @@ const {
   crearCoordinadora,
   crearConductor,
   cambiarEstado,
+  desactivarLote,
   cambiarRol,
 } = require("../controllers/usuarioController");
 const { protegerRuta, permitirRoles } = require("../middleware/auth");
@@ -32,6 +33,16 @@ router.patch(
   permitirRoles("admin"),
   cambiarEstado,
 );
+
+// NUEVO (10/09/2026): soft delete en lote, ver usuarioController.js.
+// Mismo permiso que el toggle individual (solo admin).
+router.patch(
+  "/desactivar-lote",
+  protegerRuta,
+  permitirRoles("admin"),
+  desactivarLote,
+);
+
 router.patch("/:id/rol", protegerRuta, permitirRoles("admin"), cambiarRol);
 
 module.exports = router;

@@ -4,7 +4,25 @@ const userSchema = new mongoose.Schema(
   {
     nombre: { type: String, required: true, trim: true },
     apellido: { type: String, required: true, trim: true },
-    cedula: { type: String, required: true, unique: true, trim: true },
+    // NUEVO (10/09/2026): dejó de ser "required" a nivel de esquema. Los
+    // menores de un Grupo tipo colegio no tienen cédula, y escribir "N/A"
+    // a mano chocaba con el índice unique de siempre en la segunda
+    // estudiante sin cédula (dos documentos con el mismo texto "N/A" son
+    // un duplicado real para Mongo). Se aplica el mismo patrón ya usado
+    // en Inscripcion.numeroReferencia: default: undefined + sparse, para
+    // que el índice único solo compare cédulas que SÍ existen — cualquier
+    // cantidad de estudiantes sin cédula puede coexistir. Sigue siendo
+    // obligatoria donde corresponde (autoregistro, crear coordinadora/
+    // conductor): esos controladores la exigen ellos mismos antes de
+    // llamar a User.create. En el roster de Grupo (grupoController.js)
+    // ahora es opcional a propósito.
+    cedula: {
+      type: String,
+      trim: true,
+      default: undefined,
+      unique: true,
+      sparse: true,
+    },
     telefono: { type: String, required: true, trim: true },
     email: {
       type: String,

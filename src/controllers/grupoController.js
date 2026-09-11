@@ -129,7 +129,7 @@ async function obtenerGrupo(req, res, next) {
     }
 
     const estudiantes = await User.find({ grupoId: grupo._id })
-      .select("nombre apellido cedula email telefono createdAt")
+      .select("nombre apellido cedula email telefono activo createdAt")
       .sort({ createdAt: 1 });
 
     res.json({ success: true, data: { grupo, estudiantes } });
@@ -142,21 +142,18 @@ async function obtenerGrupo(req, res, next) {
 //
 // Soporta dos casos, distinguidos por Grupo.pendienteRoster:
 //
-// 1) Primera confirmación (pendienteRoster: true): crea las cuentas, las
-//    inscripciones y el prorrateo contable completo entre TODO el roster
-//    enviado, fija fechaInicio (de aquí cuentan las 24h del primer reporte
-//    diario) y pendienteRoster pasa a false.
+// 1) Primera confirmación (pendienteRoster: true): crea las cuentas y las
+//    inscripciones de TODO el roster enviado, registra el pago total en
+//    contabilidad (ver nota "CAMBIO (10/09/2026)" más abajo — ya NO se
+//    prorratea en varias entradas), fija fechaInicio (de aquí cuentan las
+//    24h del primer reporte diario) y pendienteRoster pasa a false.
 // 2) Adición tardía (pendienteRoster: false, ya se confirmó antes): el
 //    mismo endpoint acepta más estudiantes para un grupo que ya inició.
-//    Por instrucción explícita de la especificación, NO se re-prorratea
-//    retroactivamente lo ya cobrado — los movimientos existentes no se
-//    tocan. Los estudiantes nuevos se prorratean usando precioAcordado
-//    entre el total de estudiantes (existentes + nuevos), y ese monto por
-//    estudiante se aplica solo a los nuevos. Es la interpretación más
-//    razonable de un punto que la especificación deja abierto (ver
-//    ESPECIFICACION_PROGRAMAS_NUEVOS.md sección 2, "Prorrateo contable") —
-//    si la fundadora prefiere otra regla (ej. dividir solo entre los
-//    nuevos, sin mirar el total), es un cambio acotado a este bloque.
+//    No genera ningún cobro ni entrada contable nueva — precioAcordado ya
+//    se registró completo en la primera confirmación. Inscripcion.monto
+//    de cada estudiante nuevo sigue calculándose como referencia interna
+//    (cuánto "vale" su cupo dentro del total), pero es solo eso, una
+//    referencia — no alimenta contabilidad.
 async function confirmarRoster(req, res, next) {
   try {
     const grupo = await Grupo.findById(req.params.id);
@@ -200,24 +197,32 @@ async function confirmarRoster(req, res, next) {
         if (
           !nombre ||
           !apellido ||
-          !cedula ||
           !telefono ||
           !email ||
           !provincia ||
           !fechaNacimiento
         ) {
           throw new Error(
-            "Faltan campos obligatorios (nombre, apellido, cedula, telefono, email, provincia, fechaNacimiento).",
+            "Faltan campos obligatorios (nombre, apellido, telefono, email, provincia, fechaNacimiento).",
           );
         }
 
         const passwordPlano = generarPasswordAleatoria();
         const passwordHash = await bcrypt.hash(passwordPlano, 10);
 
+        // NUEVO (10/09/2026): cédula es opcional aquí — los grupos tipo
+        // colegio suelen tener menores sin cédula. Cualquier valor vacío
+        // o literalmente "n/a" (con o sin mayúsculas/puntos/espacios) se
+        // guarda como "sin cédula" de verdad (undefined), no como el
+        // texto "N/A" — así el índice sparse de User.cedula no choca
+        // entre dos estudiantes sin cédula (ver nota en models/User.js).
+        const cedulaLimpia = (cedula || "").trim();
+        const sinCedula = !cedulaLimpia || /^n\.?\/?a\.?$/i.test(cedulaLimpia);
+
         const nuevoUsuario = await User.create({
           nombre,
           apellido,
-          cedula,
+          ...(sinCedula ? {} : { cedula: cedulaLimpia }),
           telefono,
           email,
           passwordHash,
@@ -259,9 +264,22 @@ async function confirmarRoster(req, res, next) {
       });
     }
 
-    // --- Paso 2: prorrateo. Cuenta existente ANTES de este lote, para que
-    // una adición tardía calcule el total correcto sin tocar lo ya
-    // cobrado (ver nota de diseño arriba de la función).
+    // --- Paso 2: registro por estudiante (Inscripcion) + contabilidad.
+    //
+    // CAMBIO (10/09/2026): antes esto prorrateaba precioAcordado entre el
+    // roster y creaba un MovimientoContable por estudiante. La fundadora
+    // pidió eliminar el prorrateo contable — muchas entradas pequeñas por
+    // el mismo grupo distorsionan el balance y hacen más difícil
+    // entenderlo de un vistazo. Ahora: Inscripcion.monto de cada
+    // estudiante guarda su parte prorrateada solo como referencia interna
+    // (para saber cuánto "vale" cada cupo si se necesita mirar el
+    // detalle), pero la CONTABILIDAD (MovimientoContable, lo único que
+    // alimenta /contabilidad y los balances mensuales) recibe una sola
+    // entrada por el monto TOTAL, y solo en la primera confirmación del
+    // roster (el primer pago real de la institución). Adiciones tardías
+    // (esPrimeraConfirmacion === false) no generan ningún
+    // MovimientoContable nuevo — no hay cobro adicional real que
+    // registrar, precioAcordado ya cubrió al grupo completo por delante.
     const cantidadExistente = esPrimeraConfirmacion
       ? 0
       : (await User.countDocuments({ grupoId: grupo._id })) - creados.length;
@@ -271,6 +289,7 @@ async function confirmarRoster(req, res, next) {
     const residuo = grupo.precioAcordado - montoBase * cantidadTotal;
 
     const ahora = new Date();
+    const inscripcionesCreadas = [];
 
     for (let i = 0; i < creados.length; i++) {
       const { usuario, passwordPlano } = creados[i];
@@ -278,7 +297,8 @@ async function confirmarRoster(req, res, next) {
       // ESTE lote (no a la primera del grupo en términos absolutos) —
       // igual de arbitrario que cualquier otra regla de redondeo, pero
       // consistente con "el residuo va en el primer registro" de la
-      // especificación.
+      // especificación. Este monto ya NO se contabiliza individualmente
+      // (ver nota arriba); es solo referencia dentro de Inscripcion.
       const monto = i === 0 ? montoBase + residuo : montoBase;
 
       const inscripcion = await Inscripcion.create({
@@ -291,16 +311,7 @@ async function confirmarRoster(req, res, next) {
         fechaPago: ahora,
         confirmadoPor: req.usuario._id,
       });
-
-      await MovimientoContable.create({
-        tipo: "entrada",
-        categoria: "inscripcion",
-        monto,
-        descripcion: `Inscripción de grupo — ${grupo.nombreInstitucion} (${usuario.nombre} ${usuario.apellido})`,
-        fecha: ahora,
-        inscripcionRelacionadaId: inscripcion._id,
-        registradoPor: req.usuario._id,
-      });
+      inscripcionesCreadas.push(inscripcion);
 
       // Mismo patrón que confirmarPago en inscripcionController.js —
       // upsert por si ya existiera (no debería, pero es defensivo y barato).
@@ -320,6 +331,21 @@ async function confirmarRoster(req, res, next) {
         nombre: usuario.nombre,
         password: passwordPlano,
         nombreInstitucion: grupo.nombreInstitucion,
+      });
+    }
+
+    // Una sola entrada contable, solo en el primer pago, por el total
+    // negociado — no por la suma de las partes prorrateadas (es el mismo
+    // número, pero como UNA entrada en vez de una por estudiante).
+    if (esPrimeraConfirmacion && inscripcionesCreadas.length > 0) {
+      await MovimientoContable.create({
+        tipo: "entrada",
+        categoria: "inscripcion",
+        monto: grupo.precioAcordado,
+        descripcion: `Inscripción de grupo — ${grupo.nombreInstitucion} (pago total, ${creados.length} estudiante${creados.length === 1 ? "" : "s"})`,
+        fecha: ahora,
+        inscripcionRelacionadaId: inscripcionesCreadas[0]._id,
+        registradoPor: req.usuario._id,
       });
     }
 
