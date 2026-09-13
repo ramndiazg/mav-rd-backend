@@ -1,17 +1,21 @@
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const User = require("../models/User");
 const Inscripcion = require("../models/Inscripcion");
+const {
+  requierePracticaDeManejo,
+} = require("../utils/elegibilidadPractica");
 
 // GET /api/practica/pendientes — conductor/admin: estudiantes que
 // terminaron la teoría (4 sesiones + 4 exámenes) y todavía esperan que un
 // chofer confirme su práctica.
 //
-// NUEVO (09/09/2026): estudiantes de un Grupo (Escolar/Empresarial) no
-// cursan práctica de manejo — sin este filtro, cursoCompletado se vuelve
-// true para ellas igual que cualquier otra estudiante, pero
-// practicaAprobada nunca se vuelve true (nadie la aprueba, no aplica),
-// así que se quedaban apareciendo aquí para siempre. Mismo criterio que
-// diplomaController.js/intentoExamenController.js/sesionController.js.
+// Estudiantes de un Grupo (Escolar/Empresarial) no cursan práctica de
+// manejo — sin este filtro, cursoCompletado se vuelve true para ellas
+// igual que cualquier otra estudiante, pero practicaAprobada nunca se
+// vuelve true (nadie la aprueba, no aplica), así que se quedaban
+// apareciendo aquí para siempre. Criterio centralizado (11/09/2026) en
+// utils/elegibilidadPractica.js — mismo helper que usan
+// diplomaController.js e intentoExamenController.js.
 async function listarPendientes(req, res, next) {
   try {
     const progresos = await ProgresoEstudiante.find({
@@ -37,7 +41,9 @@ async function listarPendientes(req, res, next) {
     );
 
     const data = progresos
-      .filter((p) => !usuariosPorId.get(String(p.userId))?.grupoId)
+      .filter((p) =>
+        requierePracticaDeManejo(usuariosPorId.get(String(p.userId))),
+      )
       .map((p) => {
         const usuario = usuariosPorId.get(String(p.userId));
         const fechaCompletado = p.fechasAprobacionSesion.find(

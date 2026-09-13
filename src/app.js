@@ -26,7 +26,7 @@ const empresasRoutes = require("./routes/empresasRoutes");
 const chatbotRoutes = require("./routes/chatbotRoutes");
 const resumenRoutes = require("./routes/resumenRoutes");
 const testPsicologicoRoutes = require("./routes/testPsicologicoRoutes");
-const informacionComplementariaEscolarRoutes = require("./routes/informacionComplementariaEscolarRoutes");
+const cuestionarioEscolarRoutes = require("./routes/cuestionarioEscolarRoutes");
 const grupoRoutes = require("./routes/grupoRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
@@ -112,10 +112,7 @@ app.use("/api/empresas", empresasRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/interno", resumenRoutes);
 app.use("/api/test-psicologico", testPsicologicoRoutes);
-app.use(
-  "/api/informacion-complementaria-escolar",
-  informacionComplementariaEscolarRoutes,
-);
+app.use("/api/cuestionario-escolar", cuestionarioEscolarRoutes);
 app.use("/api/grupos", grupoRoutes);
 
 // Cualquier ruta no encontrada

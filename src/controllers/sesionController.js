@@ -1,7 +1,7 @@
 const Sesion = require("../models/Sesion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const TestPsicologico = require("../models/TestPsicologico");
-const InformacionComplementariaEscolar = require("../models/InformacionComplementariaEscolar");
+const CuestionarioEscolar = require("../models/CuestionarioEscolar");
 const Grupo = require("../models/Grupo");
 
 // GET /api/sesiones — coordinadora/admin: lista completa con contenido, para gestión
@@ -24,10 +24,12 @@ async function listarSesiones(req, res, next) {
 //
 // ACTUALIZADO (08/09/2026): el cuestionario exigido ya no es siempre
 // TestPsicologico. Si el estudiante pertenece a un Grupo de tipo
-// "colegio" (programa Escolar), se exige InformacionComplementariaEscolar
-// en su lugar — nunca ambos, y nunca el framing de "test psicológico"
-// para estas estudiantes. Para todo lo demás (grupoId null, o Grupo de
-// tipo "empresa"), sigue exigiendo TestPsicologico igual que hoy.
+// "colegio" (programa Escolar), se exige CuestionarioEscolar en su
+// lugar (renombrado en código el 11/09/2026, antes
+// InformacionComplementariaEscolar — ver models/CuestionarioEscolar.js)
+// — nunca ambos, y nunca el framing de "test psicológico" para estas
+// estudiantes. Para todo lo demás (grupoId null, o Grupo de tipo
+// "empresa"), sigue exigiendo TestPsicologico igual que hoy.
 async function obtenerSesionParaEstudiante(req, res, next) {
   try {
     const numero = Number(req.params.numero);
@@ -39,16 +41,15 @@ async function obtenerSesionParaEstudiante(req, res, next) {
     }
 
     if (esEscolar) {
-      const cuestionarioCompletado =
-        await InformacionComplementariaEscolar.exists({
-          userId: req.usuario._id,
-        });
+      const cuestionarioCompletado = await CuestionarioEscolar.exists({
+        userId: req.usuario._id,
+      });
       if (!cuestionarioCompletado) {
         return res.status(403).json({
           success: false,
           error:
             "Debes completar el cuestionario de perfil antes de acceder al contenido.",
-          codigo: "INFORMACION_COMPLEMENTARIA_ESCOLAR_PENDIENTE",
+          codigo: "CUESTIONARIO_ESCOLAR_PENDIENTE",
         });
       }
     } else {

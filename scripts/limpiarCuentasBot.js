@@ -47,7 +47,7 @@ const IntentoExamen = require("../src/models/IntentoExamen");
 const ProgresoEstudiante = require("../src/models/ProgresoEstudiante");
 const Diploma = require("../src/models/Diploma");
 const TestPsicologico = require("../src/models/TestPsicologico");
-const InformacionComplementariaEscolar = require("../src/models/InformacionComplementariaEscolar");
+const CuestionarioEscolar = require("../src/models/CuestionarioEscolar");
 
 const modoReal = process.argv.includes("--confirmar");
 
@@ -147,8 +147,8 @@ async function main() {
     testsPsicologicos: await TestPsicologico.countDocuments({
       userId: { $in: idsABorrar },
     }),
-    informacionComplementariaEscolar:
-      await InformacionComplementariaEscolar.countDocuments({
+    cuestionarioEscolar:
+      await CuestionarioEscolar.countDocuments({
         userId: { $in: idsABorrar },
       }),
   };
@@ -185,7 +185,7 @@ async function main() {
   await ProgresoEstudiante.deleteMany({ userId: { $in: idsABorrar } });
   await Diploma.deleteMany({ userId: { $in: idsABorrar } });
   await TestPsicologico.deleteMany({ userId: { $in: idsABorrar } });
-  await InformacionComplementariaEscolar.deleteMany({
+  await CuestionarioEscolar.deleteMany({
     userId: { $in: idsABorrar },
   });
   await User.deleteMany({ _id: { $in: idsABorrar } });

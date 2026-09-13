@@ -4,6 +4,9 @@ const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const Inscripcion = require("../models/Inscripcion");
 const { intentarDesbloquear } = require("./examenController");
 const {
+  requierePracticaDeManejo,
+} = require("../utils/elegibilidadPractica");
+const {
   notificarEstudianteListaParaPractica,
 } = require("../utils/notificaciones");
 
@@ -284,15 +287,16 @@ async function entregarIntento(req, res, next) {
         // await a propósito, igual que enviarCorreoDiplomaListo — no debe
         // demorar la respuesta a la estudiante.
         //
-        // NUEVO (08/09/2026): si la estudiante pertenece a un Grupo
-        // (Escolar/Empresarial), no cursa práctica de manejo — no tiene
-        // sentido notificar a los choferes de alguien que nunca va a
-        // agendar una práctica. El gate de diploma para estas estudiantes
-        // ya salta directo con cursoCompletado (ver diplomaController.js).
+        // Si la estudiante pertenece a un Grupo (Escolar/Empresarial), no
+        // cursa práctica de manejo — no tiene sentido notificar a los
+        // choferes de alguien que nunca va a agendar una práctica. El
+        // gate de diploma para estas estudiantes ya salta directo con
+        // cursoCompletado (ver diplomaController.js). Criterio
+        // centralizado (11/09/2026) en utils/elegibilidadPractica.js.
         if (
           !completadoAntes &&
           progreso.cursoCompletado &&
-          !req.usuario.grupoId
+          requierePracticaDeManejo(req.usuario)
         ) {
           const inscripcion = await Inscripcion.findOne({
             userId: intento.userId,

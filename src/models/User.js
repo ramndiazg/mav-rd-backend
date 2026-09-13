@@ -48,7 +48,7 @@ const userSchema = new mongoose.Schema(
     // todos los estudiantes que se autoregistran (flujo actual, sin
     // cambios). Determina si se le exige práctica de manejo para el
     // diploma (ver gate en diplomaController.js) y si su cuestionario
-    // previo al curso es TestPsicologico o InformacionComplementariaEscolar.
+    // previo al curso es TestPsicologico o CuestionarioEscolar.
     grupoId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Grupo",

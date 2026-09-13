@@ -25,7 +25,7 @@ function generarTokenAleatorio() {
 // NUEVO (08/09/2026): agrega grupoTipo ("colegio" | "empresa" | null) al
 // objeto de usuario que se manda al frontend, para que pueda decidir sin
 // un segundo fetch si le toca TestPsicologico o
-// InformacionComplementariaEscolar, y si le aplica el gate de práctica.
+// CuestionarioEscolar, y si le aplica el gate de práctica.
 // Recibe un documento de Mongoose (con .toObject()) y devuelve un objeto
 // plano listo para responder como JSON.
 async function conGrupoTipo(usuarioDoc) {

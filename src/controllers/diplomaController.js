@@ -10,6 +10,9 @@ const {
   generarUrlDescargaFirmada,
 } = require("../utils/cloudinaryUpload");
 const { enviarCorreoDiplomaListo } = require("../utils/notificaciones");
+const {
+  requierePracticaDeManejo,
+} = require("../utils/elegibilidadPractica");
 
 // GET /api/diplomas — coordinadora/admin: todos los diplomas generados
 // (para cruzar "tiene diploma" en el panel de estudiantes, mismo patrón
@@ -42,15 +45,16 @@ async function listarElegibles(req, res, next) {
     );
     const usuarioPorId = new Map(usuarios.map((u) => [String(u._id), u]));
 
-    // NUEVO (08/09/2026): estudiantes de un Grupo (Escolar/Empresarial)
-    // no cursan práctica de manejo — el gate salta directo a
-    // cursoCompletado. El resto (grupoId null, flujo estándar) sigue
-    // exigiendo practicaAprobada, igual que antes del 05/09/2026.
+    // Estudiantes de un Grupo (Escolar/Empresarial) no cursan práctica de
+    // manejo — el gate salta directo a cursoCompletado. El resto
+    // (grupoId null, flujo estándar) sigue exigiendo practicaAprobada.
+    // Criterio centralizado en utils/elegibilidadPractica.js (11/09/2026)
+    // — antes repetido de forma independiente en 4 archivos distintos.
     const idsElegiblesPorProgreso = progresosCompletados
       .filter((progreso) => {
         const usuario = usuarioPorId.get(String(progreso.userId));
         if (!usuario) return false;
-        const requierePractica = !usuario.grupoId;
+        const requierePractica = requierePracticaDeManejo(usuario);
         return !requierePractica || progreso.practicaAprobada;
       })
       .map((p) => p.userId);
@@ -105,11 +109,12 @@ async function generarDiploma(req, res, next) {
 
     const progreso = await ProgresoEstudiante.findOne({ userId });
 
-    // NUEVO (08/09/2026): estudiantes inscritas por un Grupo (Escolar/
-    // Empresarial) no cursan práctica de manejo, así que el gate salta
-    // directo a cursoCompletado. Todas las demás (grupoId null, flujo
-    // estándar) siguen exigiendo practicaAprobada, igual que antes.
-    const requierePractica = !estudiante.grupoId;
+    // Estudiantes inscritas por un Grupo (Escolar/Empresarial) no cursan
+    // práctica de manejo, así que el gate salta directo a
+    // cursoCompletado. Todas las demás (grupoId null, flujo estándar)
+    // siguen exigiendo practicaAprobada. Criterio centralizado en
+    // utils/elegibilidadPractica.js (11/09/2026).
+    const requierePractica = requierePracticaDeManejo(estudiante);
     const elegible =
       progreso &&
       progreso.cursoCompletado &&

@@ -1,31 +1,50 @@
 /**
- * Purga de usuarios de prueba (todos los roles) — Muvo RD Vial
+ * Purga de datos de prueba — Muvo RD Vial
  *
- * A diferencia de purgarDatosPrueba.js (versión 06/08/2026), este script:
- *   - Borra TODOS los usuarios excepto maria@test.com, SIN IMPORTAR ROL
- *     (estudiante, coordinadora, admin, conductor) — criterio confirmado
- *     el 06/09/2026: no hay pagos reales confirmados todavía.
- *   - Incluye en la cascada TestPsicologico e Instructor, que no existían
- *     cuando se escribió el script original.
- *   - NO toca Sesion, Examen ni ContenidoSesion — esas colecciones ya
- *     tienen contenido real (con bugs pendientes de corregir aparte, ver
- *     DATABASE.md y ARQUITECTURA_BACKEND.md) y no deben borrarse aquí.
- *   - NO toca movimientosContables — igual que el script original. Si
- *     llegara a haber algún pago de prueba confirmado ahí, hay que
- *     identificarlo y borrarlo aparte a mano, porque no está enlazado
- *     directamente a userId en el esquema actual.
+ * AMPLIADO (11/09/2026) para dejar la base lista para producción,
+ * empezando de cero salvo la cuenta admin de prueba. Antes de esta
+ * versión el script solo borraba usuarios y su cascada directa
+ * (inscripciones, exámenes, progreso, diplomas, test psicológico,
+ * instructores) pero dejaba huérfanos:
+ *   - `CuestionarioEscolar` — nunca se agregó a la cascada cuando se
+ *     creó esa colección (bug encontrado y corregido acá).
+ *   - `Grupo` — quedaban instituciones "vacías" sin ningún estudiante.
+ *   - `MovimientoContable` / `BalanceMensual` — toda la contabilidad.
+ *
+ * De paso: existía un `purgarDatosPrueba.js` con contenido IDÉNTICO a
+ * este archivo (quedó sin borrar de una versión anterior) — se eliminó,
+ * este es el único script de purga del proyecto.
+ *
+ * Qué borra (todo excepto la cuenta EMAIL_A_CONSERVAR):
+ *   - User (todos los roles: estudiante, coordinadora, admin, conductor)
+ *   - En cascada por userId: Inscripcion, IntentoExamen,
+ *     ProgresoEstudiante, Diploma, TestPsicologico, CuestionarioEscolar,
+ *     Instructor.
+ *   - Grupo — completo, sin filtrar (no tiene sentido dejar una
+ *     institución sin ningún estudiante).
+ *   - MovimientoContable y BalanceMensual — completos, sin filtrar (no
+ *     están enlazados a userId en el esquema actual, así que no se
+ *     puede filtrar por estudiante; se borran todos).
+ *
+ * Qué NO borra (a propósito, es contenido del curso, no datos de
+ * prueba de una persona): Sesion, Examen, ContenidoSesion, Plan,
+ * SolicitudEmpresarial (leads del formulario de /empresas — si también
+ * quieres limpiarlos, agrégalo a mano, no se asumió aquí).
  *
  * USO:
  *   node scripts/purgarUsuariosPrueba.js
- *     → dry-run (por defecto): cuenta y muestra qué se borraría, incluido
- *       el desglose por rol, sin borrar nada. Corre esto primero, siempre.
+ *     → dry-run (por defecto): cuenta y muestra qué se borraría, sin
+ *       borrar nada. Corre esto primero, siempre.
  *
  *   node scripts/purgarUsuariosPrueba.js --confirmar
- *     → modo real. Aun así pide escribir BORRAR a mano antes de tocar la
- *       base de datos.
+ *     → modo real. Aun así pide escribir BORRAR a mano antes de tocar
+ *       la base de datos.
  *
- * Antes de correr en modo real: confirma que ya hiciste el backup manual
- * (Docker + mongodump + 7-Zip + Dropbox) — ver HISTORIAL_MODIFICACIONES.md.
+ * Antes de correr en modo real: (1) haz el backup manual (Docker +
+ * mongodump + 7-Zip + Dropbox — ver HISTORIAL_MODIFICACIONES.md), y
+ * (2) si vas a desplegar el fix del índice de Sesion en el mismo
+ * momento, dropea el índice viejo `numero_1` en Atlas antes o después,
+ * es independiente de esta purga (ver ARQUITECTURA_BACKEND.md).
  */
 
 require("dotenv").config();
@@ -38,7 +57,11 @@ const ProgresoEstudiante = require("../src/models/ProgresoEstudiante");
 const Inscripcion = require("../src/models/Inscripcion");
 const Diploma = require("../src/models/Diploma");
 const TestPsicologico = require("../src/models/TestPsicologico");
+const CuestionarioEscolar = require("../src/models/CuestionarioEscolar");
 const Instructor = require("../src/models/Instructor");
+const Grupo = require("../src/models/Grupo");
+const MovimientoContable = require("../src/models/MovimientoContable");
+const BalanceMensual = require("../src/models/BalanceMensual");
 
 const EMAIL_A_CONSERVAR = "maria@test.com";
 const modoReal = process.argv.includes("--confirmar");
@@ -107,19 +130,35 @@ async function main() {
     testsPsicologicos: await TestPsicologico.countDocuments({
       userId: { $in: idsABorrar },
     }),
+    cuestionariosEscolares: await CuestionarioEscolar.countDocuments({
+      userId: { $in: idsABorrar },
+    }),
     instructores: await Instructor.countDocuments({
       userId: { $in: idsABorrar },
     }),
   };
 
-  console.log("\nDatos asociados que se van a borrar en cascada:");
+  console.log("\nDatos asociados a esos usuarios que se van a borrar en cascada:");
   for (const [coleccion, cantidad] of Object.entries(conteos)) {
     console.log(`  ${coleccion}: ${cantidad}`);
   }
 
+  const conteosGlobales = {
+    grupos: await Grupo.countDocuments({}),
+    movimientosContables: await MovimientoContable.countDocuments({}),
+    balancesMensuales: await BalanceMensual.countDocuments({}),
+  };
+
   console.log(
-    "\nColecciones que este script NO toca (a propósito): sesiones, examenes, " +
-      "contenidoSesion, movimientosContables.",
+    "\nColecciones que se borran COMPLETAS, sin filtrar por usuario (no tiene sentido dejarlas huérfanas / no están enlazadas a userId):",
+  );
+  for (const [coleccion, cantidad] of Object.entries(conteosGlobales)) {
+    console.log(`  ${coleccion}: ${cantidad}`);
+  }
+
+  console.log(
+    "\nColecciones que este script NO toca (a propósito, es contenido del curso): " +
+      "sesiones, examenes, contenidoSesion, planes, solicitudesEmpresariales.",
   );
 
   if (!modoReal) {
@@ -157,7 +196,11 @@ async function main() {
   await ProgresoEstudiante.deleteMany({ userId: { $in: idsABorrar } });
   await Diploma.deleteMany({ userId: { $in: idsABorrar } });
   await TestPsicologico.deleteMany({ userId: { $in: idsABorrar } });
+  await CuestionarioEscolar.deleteMany({ userId: { $in: idsABorrar } });
   await Instructor.deleteMany({ userId: { $in: idsABorrar } });
+  await Grupo.deleteMany({});
+  await MovimientoContable.deleteMany({});
+  await BalanceMensual.deleteMany({});
   await User.deleteMany({ email: { $ne: EMAIL_A_CONSERVAR } });
 
   console.log("Listo. Solo queda la cuenta de maria@test.com.");
