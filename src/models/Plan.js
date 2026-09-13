@@ -15,8 +15,12 @@ const planSchema = new mongoose.Schema(
     programa: { type: String, required: true, default: "estandar" },
 
     codigo: {
+      // NUEVO (13/09/2026): "teorico" — un solo plan por programa para
+      // Motorizados/Pesados, sin niveles (no hay práctica de manejo de por
+      // medio). Ver ANALISIS_MOTORISTA_PESADOS.md, sección 7, pregunta 2
+      // (resuelta 13/09/2026).
       type: String,
-      enum: ["fundacion", "normal", "vip"],
+      enum: ["fundacion", "normal", "vip", "teorico"],
       required: true,
     },
     nombre: { type: String, required: true },
@@ -27,20 +31,27 @@ const planSchema = new mongoose.Schema(
 
     // "grupal" = práctica en grupo, sin número fijo de sesiones por
     // estudiante (plan Fundación). "individual" = sesiones 1 a 1 con un
-    // instructor (Normal y VIP).
+    // instructor (Normal y VIP). NUEVO (13/09/2026): opcional a nivel de
+    // esquema — un plan "teorico" (Motorizados/Pesados) no tiene práctica
+    // de manejo, así que no tiene con qué llenar este campo ni los otros 3
+    // de abajo de forma honesta (ver ANALISIS_MOTORISTA_PESADOS.md,
+    // sección 3). Queda como responsabilidad de quien siembra los datos
+    // dejarlos sin llenar para planes "teorico", no del esquema.
     modalidadPractica: {
       type: String,
       enum: ["grupal", "individual"],
-      required: true,
+      required: false,
     },
-    // null cuando modalidadPractica es "grupal" (no aplica un número fijo).
+    // null cuando modalidadPractica es "grupal" (no aplica un número fijo),
+    // o cuando el plan no tiene práctica de manejo en absoluto (teorico).
     cantidadSesionesPractica: { type: Number, default: null },
-    duracionSesionMinutos: { type: Number, required: true },
+    duracionSesionMinutos: { type: Number, required: false },
 
     // Combustible — puramente informativo. Se paga en el lugar de la
     // práctica, directo al instructor; no se cobra ni se registra dentro
-    // de la app.
-    costoPorSesion: { type: Number, required: true },
+    // de la app. NUEVO (13/09/2026): opcional, ver nota de
+    // modalidadPractica arriba.
+    costoPorSesion: { type: Number, required: false },
 
     // Lista larga para el detalle en /inscripcion (el Home solo usa
     // fraseDestacada, no esta lista).

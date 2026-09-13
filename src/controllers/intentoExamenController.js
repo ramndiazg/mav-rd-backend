@@ -287,16 +287,17 @@ async function entregarIntento(req, res, next) {
         // await a propósito, igual que enviarCorreoDiplomaListo — no debe
         // demorar la respuesta a la estudiante.
         //
-        // Si la estudiante pertenece a un Grupo (Escolar/Empresarial), no
-        // cursa práctica de manejo — no tiene sentido notificar a los
-        // choferes de alguien que nunca va a agendar una práctica. El
-        // gate de diploma para estas estudiantes ya salta directo con
-        // cursoCompletado (ver diplomaController.js). Criterio
-        // centralizado (11/09/2026) en utils/elegibilidadPractica.js.
+        // Si la estudiante pertenece a un Grupo (Escolar/Empresarial) o a
+        // un programa sin práctica de manejo (Motorizados/Pesados), no
+        // tiene sentido notificar a los choferes de alguien que nunca va
+        // a agendar una práctica. El gate de diploma para estas
+        // estudiantes ya salta directo con cursoCompletado (ver
+        // diplomaController.js). Criterio centralizado (11/09/2026,
+        // ampliado 13/09/2026) en utils/elegibilidadPractica.js.
         if (
           !completadoAntes &&
           progreso.cursoCompletado &&
-          requierePracticaDeManejo(req.usuario)
+          requierePracticaDeManejo(req.usuario, progreso.programa)
         ) {
           const inscripcion = await Inscripcion.findOne({
             userId: intento.userId,

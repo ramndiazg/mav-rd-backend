@@ -22,8 +22,10 @@ const inscripcionSchema = new mongoose.Schema(
       // (Grupo.precioAcordado) y prorrateado entre el roster real al
       // confirmarlo (ver grupoController.js). No pasa por la colección
       // Plan en absoluto.
+      // NUEVO (13/09/2026): "teorico" — plan único de Motorizados/Pesados,
+      // sin niveles. Ver models/Plan.js y ANALISIS_MOTORISTA_PESADOS.md.
       type: String,
-      enum: ["fundacion", "normal", "vip", "grupo"],
+      enum: ["fundacion", "normal", "vip", "grupo", "teorico"],
       required: true,
     },
     monto: { type: Number, required: true },

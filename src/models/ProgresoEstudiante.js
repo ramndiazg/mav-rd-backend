@@ -8,6 +8,17 @@ const progresoSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+
+    // NUEVO (13/09/2026): espejo de Inscripcion.programa, seteado una sola
+    // vez al confirmar el pago (ver inscripcionController.js#confirmarPago).
+    // Existe para que obtenerSesionParaEstudiante (sesionController.js)
+    // pueda filtrar `Sesion.findOne({ numero, programaContenido })` sin un
+    // populate ni una consulta extra a Inscripcion en el path más caliente
+    // del sistema — decisión ya documentada en ANALISIS_MOTORISTA_PESADOS.md,
+    // sección 3. También decide, junto con Grupo, si a la estudiante le
+    // aplica la práctica de manejo (ver utils/elegibilidadPractica.js).
+    programa: { type: String, default: "estandar" },
+
     sesionActualDesbloqueada: { type: Number, default: 0 },
     sesionesAprobadas: { type: [Number], default: [] },
     cursoCompletado: { type: Boolean, default: false },

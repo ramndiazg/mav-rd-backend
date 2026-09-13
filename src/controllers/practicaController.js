@@ -9,11 +9,12 @@ const {
 // terminaron la teoría (4 sesiones + 4 exámenes) y todavía esperan que un
 // chofer confirme su práctica.
 //
-// Estudiantes de un Grupo (Escolar/Empresarial) no cursan práctica de
-// manejo — sin este filtro, cursoCompletado se vuelve true para ellas
-// igual que cualquier otra estudiante, pero practicaAprobada nunca se
-// vuelve true (nadie la aprueba, no aplica), así que se quedaban
-// apareciendo aquí para siempre. Criterio centralizado (11/09/2026) en
+// Estudiantes de un Grupo (Escolar/Empresarial) o de un programa sin
+// práctica de manejo (Motorizados/Pesados) no cursan práctica — sin este
+// filtro, cursoCompletado se vuelve true para ellas igual que cualquier
+// otra estudiante, pero practicaAprobada nunca se vuelve true (nadie la
+// aprueba, no aplica), así que se quedaban apareciendo aquí para siempre.
+// Criterio centralizado (11/09/2026, ampliado 13/09/2026) en
 // utils/elegibilidadPractica.js — mismo helper que usan
 // diplomaController.js e intentoExamenController.js.
 async function listarPendientes(req, res, next) {
@@ -42,7 +43,7 @@ async function listarPendientes(req, res, next) {
 
     const data = progresos
       .filter((p) =>
-        requierePracticaDeManejo(usuariosPorId.get(String(p.userId))),
+        requierePracticaDeManejo(usuariosPorId.get(String(p.userId)), p.programa),
       )
       .map((p) => {
         const usuario = usuariosPorId.get(String(p.userId));

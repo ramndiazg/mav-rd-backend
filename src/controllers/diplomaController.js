@@ -45,16 +45,21 @@ async function listarElegibles(req, res, next) {
     );
     const usuarioPorId = new Map(usuarios.map((u) => [String(u._id), u]));
 
-    // Estudiantes de un Grupo (Escolar/Empresarial) no cursan práctica de
-    // manejo — el gate salta directo a cursoCompletado. El resto
-    // (grupoId null, flujo estándar) sigue exigiendo practicaAprobada.
-    // Criterio centralizado en utils/elegibilidadPractica.js (11/09/2026)
-    // — antes repetido de forma independiente en 4 archivos distintos.
+    // Estudiantes de un Grupo (Escolar/Empresarial) o de un programa sin
+    // práctica de manejo (Motorizados/Pesados) no cursan práctica — el
+    // gate salta directo a cursoCompletado. El resto (flujo estándar)
+    // sigue exigiendo practicaAprobada. Criterio centralizado en
+    // utils/elegibilidadPractica.js (11/09/2026, ampliado 13/09/2026 con
+    // el segundo parámetro `programa`) — antes repetido de forma
+    // independiente en 4 archivos distintos.
     const idsElegiblesPorProgreso = progresosCompletados
       .filter((progreso) => {
         const usuario = usuarioPorId.get(String(progreso.userId));
         if (!usuario) return false;
-        const requierePractica = requierePracticaDeManejo(usuario);
+        const requierePractica = requierePracticaDeManejo(
+          usuario,
+          progreso.programa,
+        );
         return !requierePractica || progreso.practicaAprobada;
       })
       .map((p) => p.userId);
@@ -109,12 +114,16 @@ async function generarDiploma(req, res, next) {
 
     const progreso = await ProgresoEstudiante.findOne({ userId });
 
-    // Estudiantes inscritas por un Grupo (Escolar/Empresarial) no cursan
-    // práctica de manejo, así que el gate salta directo a
-    // cursoCompletado. Todas las demás (grupoId null, flujo estándar)
-    // siguen exigiendo practicaAprobada. Criterio centralizado en
-    // utils/elegibilidadPractica.js (11/09/2026).
-    const requierePractica = requierePracticaDeManejo(estudiante);
+    // Estudiantes inscritas por un Grupo (Escolar/Empresarial) o en un
+    // programa sin práctica de manejo (Motorizados/Pesados) no cursan
+    // práctica, así que el gate salta directo a cursoCompletado. Todas las
+    // demás (flujo estándar) siguen exigiendo practicaAprobada. Criterio
+    // centralizado en utils/elegibilidadPractica.js (11/09/2026, ampliado
+    // 13/09/2026).
+    const requierePractica = requierePracticaDeManejo(
+      estudiante,
+      progreso?.programa,
+    );
     const elegible =
       progreso &&
       progreso.cursoCompletado &&
@@ -130,8 +139,13 @@ async function generarDiploma(req, res, next) {
       });
     }
 
+    // NUEVO (13/09/2026): filtrado también por programaContenido — sin
+    // esto, con Motorizados/Pesados ya sembrados, `numero` puede repetirse
+    // entre programas y esta consulta podría traer la Sesión equivocada
+    // (misma numeración, distinto programa) para el PDF del diploma.
     const sesiones = await Sesion.find({
       numero: { $in: progreso.sesionesAprobadas },
+      programaContenido: progreso.programa || "estandar",
     })
       .select("numero titulo")
       .lean();

@@ -9,10 +9,20 @@ const {
   enviarCorreoPagoRechazado,
 } = require("../utils/notificaciones");
 
+// NUEVO (13/09/2026): qué `tipoPlan` es válido para cada `programa` — ver
+// ANALISIS_MOTORISTA_PESADOS.md, sección 7, pregunta 2 (un solo plan
+// "teorico" por programa para Motorizados/Pesados, sin niveles).
+const TIPOS_PLAN_POR_PROGRAMA = {
+  estandar: ["fundacion", "normal", "vip"],
+  motorizados: ["teorico"],
+  pesados: ["teorico"],
+};
+const PROGRAMAS_VALIDOS = Object.keys(TIPOS_PLAN_POR_PROGRAMA);
+
 // POST /api/inscripciones — coordinadora/admin crea la inscripción de una estudiante
 async function crearInscripcion(req, res, next) {
   try {
-    const { userId, tipoPlan, monto } = req.body;
+    const { userId, tipoPlan, monto, programa = "estandar" } = req.body;
 
     if (!userId || !tipoPlan || monto === undefined) {
       return res.status(400).json({
@@ -21,10 +31,17 @@ async function crearInscripcion(req, res, next) {
       });
     }
 
-    if (!["fundacion", "normal", "vip"].includes(tipoPlan)) {
+    if (!PROGRAMAS_VALIDOS.includes(programa)) {
       return res.status(400).json({
         success: false,
-        error: 'tipoPlan debe ser "fundacion", "normal" o "vip".',
+        error: `programa debe ser uno de: ${PROGRAMAS_VALIDOS.join(", ")}.`,
+      });
+    }
+
+    if (!TIPOS_PLAN_POR_PROGRAMA[programa].includes(tipoPlan)) {
+      return res.status(400).json({
+        success: false,
+        error: `tipoPlan debe ser uno de: ${TIPOS_PLAN_POR_PROGRAMA[programa].join(", ")} para el programa "${programa}".`,
       });
     }
 
@@ -39,7 +56,12 @@ async function crearInscripcion(req, res, next) {
       });
     }
 
-    const inscripcion = await Inscripcion.create({ userId, tipoPlan, monto });
+    const inscripcion = await Inscripcion.create({
+      userId,
+      tipoPlan,
+      monto,
+      programa,
+    });
 
     res.status(201).json({ success: true, data: inscripcion });
   } catch (error) {
@@ -72,12 +94,17 @@ async function confirmarPago(req, res, next) {
     inscripcion.notaRechazo = null;
     await inscripcion.save();
 
+    // NUEVO (13/09/2026): se copia `programa` de la Inscripcion al
+    // ProgresoEstudiante en el momento de confirmar el pago — una sola
+    // vez, no se vuelve a tocar después (ver models/ProgresoEstudiante.js
+    // y ANALISIS_MOTORISTA_PESADOS.md, sección 3).
     await ProgresoEstudiante.findOneAndUpdate(
       { userId: inscripcion.userId },
       {
         $setOnInsert: {
           userId: inscripcion.userId,
           sesionActualDesbloqueada: 1,
+          programa: inscripcion.programa || "estandar",
         },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true },
@@ -199,6 +226,7 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
       numeroReferencia,
       fechaDeposito,
       comprobanteUrl,
+      programa = "estandar",
     } = req.body;
 
     if (
@@ -215,10 +243,21 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
       });
     }
 
-    if (!["fundacion", "normal", "vip"].includes(tipoPlan)) {
+    // NUEVO (13/09/2026): `programa` ahora sí llega del body — antes se
+    // ignoraba por completo y siempre se buscaba el Plan de "estandar"
+    // (ver ANALISIS_MOTORISTA_PESADOS.md, sección 4). Default "estandar"
+    // para no romper el flujo actual si el frontend no lo manda.
+    if (!PROGRAMAS_VALIDOS.includes(programa)) {
       return res.status(400).json({
         success: false,
-        error: 'tipoPlan debe ser "fundacion", "normal" o "vip".',
+        error: `programa debe ser uno de: ${PROGRAMAS_VALIDOS.join(", ")}.`,
+      });
+    }
+
+    if (!TIPOS_PLAN_POR_PROGRAMA[programa].includes(tipoPlan)) {
+      return res.status(400).json({
+        success: false,
+        error: `tipoPlan debe ser uno de: ${TIPOS_PLAN_POR_PROGRAMA[programa].join(", ")} para el programa "${programa}".`,
       });
     }
 
@@ -248,7 +287,7 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
 
     const plan = await Plan.findOne({
       codigo: tipoPlan,
-      programa: "estandar",
+      programa,
       activo: true,
     });
     if (!plan) {
@@ -264,6 +303,7 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
       userId,
       tipoPlan,
       monto,
+      programa,
       estadoPago: "pendiente_verificacion",
       metodoPago: "transferencia",
       bancoEmisor,
