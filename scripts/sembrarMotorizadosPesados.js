@@ -58,15 +58,15 @@ const PRECIO_PESADOS = leerArg("precio-pesados", 0);
 const PROGRAMAS = [
   {
     programaContenido: "motorizados",
-    nombrePlan: "Curso Teórico — Motorizados",
+    nombrePlan: "Curso Teórico — Categoría 01 (Motocicletas)",
     precio: PRECIO_MOTORIZADOS,
-    fraseDestacada: "Para conductores de motocicleta, la teoría completa de la Ley 63-17.",
+    fraseDestacada: "Categoría 01 — para conductores de motocicleta, la teoría completa de la Ley 63-17.",
   },
   {
     programaContenido: "pesados",
-    nombrePlan: "Curso Teórico — Pesados",
+    nombrePlan: "Curso Teórico — Categoría 03/04 (Vehículos Pesados)",
     precio: PRECIO_PESADOS,
-    fraseDestacada: "Para conductores de camiones y trailers, la teoría completa de la Ley 63-17.",
+    fraseDestacada: "Categoría 03/04 — para conductores de camiones y trailers, la teoría completa de la Ley 63-17.",
   },
 ];
 
