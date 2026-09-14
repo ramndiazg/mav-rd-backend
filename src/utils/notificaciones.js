@@ -166,6 +166,65 @@ async function enviarSolicitudEmpresarial({
   }
 }
 
+async function enviarSolicitudEscolar({
+  nombreColegio,
+  contacto,
+  cargo,
+  telefono,
+  email,
+  cantidadEstudiantes,
+  mensaje,
+}) {
+  try {
+    const destinatarios = await DestinatarioNotificacion.find({ activo: true });
+
+    const asunto = `Nueva solicitud escolar — ${nombreColegio}`;
+    const textoPlano = `${nombreColegio} solicitó información sobre el programa escolar. Contacto: ${contacto}${
+      cargo ? ` (${cargo})` : ""
+    }, tel: ${telefono}, correo: ${email}${
+      cantidadEstudiantes ? `, ~${cantidadEstudiantes} estudiantes` : ""
+    }.${mensaje ? ` Mensaje: ${mensaje}` : ""}`;
+    const htmlEmail = plantillaCorreo({
+      titulo: "Nueva solicitud del programa escolar",
+      cuerpoHtml: `
+        <p><strong>Colegio:</strong> ${nombreColegio}</p>
+        <p><strong>Contacto:</strong> ${contacto}${cargo ? ` — ${cargo}` : ""}</p>
+        <p><strong>Teléfono:</strong> ${telefono}</p>
+        <p><strong>Correo:</strong> ${email}</p>
+        ${
+          cantidadEstudiantes
+            ? `<p><strong>Cantidad estimada de estudiantes:</strong> ${cantidadEstudiantes}</p>`
+            : ""
+        }
+        ${mensaje ? `<p><strong>Mensaje:</strong><br/>${mensaje}</p>` : ""}
+      `,
+    });
+
+    await Promise.all(
+      destinatarios.map(async (d) => {
+        try {
+          if (d.tipo === "email") {
+            await enviarEmailResend({
+              to: d.valor,
+              subject: asunto,
+              html: htmlEmail,
+            });
+          } else if (d.tipo === "telegram") {
+            await enviarMensajeTelegram({ chatId: d.valor, texto: textoPlano });
+          }
+        } catch (err) {
+          console.error(
+            `No se pudo notificar a ${d.tipo}:${d.valor} —`,
+            err.message,
+          );
+        }
+      }),
+    );
+  } catch (err) {
+    console.error("Error notificando solicitud escolar:", err.message);
+  }
+}
+
 // --- NUEVO (05/09/2026): estudiante lista para práctica ---
 // Va a DOS listas distintas y separadas:
 // 1) Cada Instructor activo, directo a su correo (via User.email) — son
@@ -448,6 +507,7 @@ module.exports = {
   notificarNuevoVoucher,
   notificarBalancePendiente,
   enviarSolicitudEmpresarial,
+  enviarSolicitudEscolar,
   notificarEstudianteListaParaPractica,
   enviarCorreoVerificacion,
   enviarCorreoPagoConfirmado,

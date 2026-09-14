@@ -70,6 +70,21 @@ const limitadorContactoEmpresarial = rateLimit({
   },
 });
 
+// Formulario de contacto de /escolar: mismo riesgo y mismo límite que el
+// de /empresas (público, dispara correo + Telegram, escribe en Mongo en
+// cada hit).
+const limitadorContactoEscolar = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error:
+      "Demasiadas solicitudes desde esta conexión. Intenta de nuevo más tarde.",
+  },
+});
+
 // Endpoints de cron (/api/interno/*) — protegidos por un secreto
 // compartido (x-cron-secret), no por sesión. Sin límite de intentos,
 // alguien podría intentar adivinar el secreto sin restricción; esto no
@@ -87,5 +102,6 @@ module.exports = {
   limitadorLogin,
   limitadorCorreoTransaccional,
   limitadorContactoEmpresarial,
+  limitadorContactoEscolar,
   limitadorInterno,
 };

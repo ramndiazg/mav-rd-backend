@@ -23,6 +23,7 @@ const destinatarioPracticaRoutes = require("./routes/destinatarioPracticaRoutes"
 const instructorRoutes = require("./routes/instructorRoutes");
 const practicaRoutes = require("./routes/practicaRoutes");
 const empresasRoutes = require("./routes/empresasRoutes");
+const escolarRoutes = require("./routes/escolarRoutes");
 const chatbotRoutes = require("./routes/chatbotRoutes");
 const resumenRoutes = require("./routes/resumenRoutes");
 const testPsicologicoRoutes = require("./routes/testPsicologicoRoutes");
@@ -109,6 +110,7 @@ app.use("/api/destinatarios-practica", destinatarioPracticaRoutes);
 app.use("/api/instructores", instructorRoutes);
 app.use("/api/practica", practicaRoutes);
 app.use("/api/empresas", empresasRoutes);
+app.use("/api/escolar", escolarRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/interno", resumenRoutes);
 app.use("/api/test-psicologico", testPsicologicoRoutes);
