@@ -15,7 +15,7 @@ const bloques = [
     clave: "acerca_de_fundadora",
     tipo: "html",
     valor:
-      "María Díaz — Contable y Administradora, Master en Tráfico, Transporte y Seguridad Vial. Fundadora de Mujeres al Volante RD desde octubre de 2017. Pionera en el sistema de aprendizaje grupal entre mujeres para las prácticas de conducción, generando intercambio de conocimientos como parte del proceso de enseñanza. Gracias al apoyo de los presidentes de las empresas de transporte afiliadas a la CNTU en todo el territorio nacional, la fundación ha podido llegar a muchos rincones del país, beneficiando a jóvenes y mujeres con recursos económicos limitados.",
+      "María Díaz — Contable y Administradora, Master en Tráfico, Transporte y Seguridad Vial. Fundadora de Mujeres al Volante RD desde octubre de 2017. Pionera en el sistema de aprendizaje grupal para las prácticas de conducción, generando intercambio de conocimientos como parte del proceso de enseñanza. Gracias al apoyo de los presidentes de las empresas de transporte afiliadas a la CNTU en todo el territorio nacional, la fundación ha podido llegar a muchos rincones del país, beneficiando a jóvenes y mujeres con recursos económicos limitados.",
   },
   {
     clave: "acerca_de_frase",
