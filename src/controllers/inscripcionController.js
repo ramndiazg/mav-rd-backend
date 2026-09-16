@@ -3,6 +3,9 @@ const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const MovimientoContable = require("../models/MovimientoContable");
 const Plan = require("../models/Plan");
 const User = require("../models/User");
+// NUEVO (13/09/2026): cobertura geográfica de la práctica de manejo — ver
+// ANALISIS_COBERTURA_PRACTICA.md.
+const MunicipioPractica = require("../models/MunicipioPractica");
 const {
   notificarNuevoVoucher,
   enviarCorreoPagoConfirmado,
@@ -12,8 +15,17 @@ const {
 // NUEVO (13/09/2026): qué `tipoPlan` es válido para cada `programa` — ver
 // ANALISIS_MOTORISTA_PESADOS.md, sección 7, pregunta 2 (un solo plan
 // "teorico" por programa para Motorizados/Pesados, sin niveles).
+//
+// ACTUALIZADO (13/09/2026): "estandar" ahora también admite "teorico" —
+// ver ANALISIS_COBERTURA_PRACTICA.md, decisión 1. Esta lista es el
+// universo GENERAL de combinaciones válidas (la usa también
+// crearInscripcion, donde la coordinadora inscribe a mano y ya conoce el
+// contexto). El subconjunto real permitido para el AUTO-registro de una
+// estudiante en "estandar" depende además de si su municipio tiene
+// cobertura de práctica — esa validación adicional vive solo en
+// crearOReenviarInscripcionPropia (ver más abajo).
 const TIPOS_PLAN_POR_PROGRAMA = {
-  estandar: ["fundacion", "normal", "vip"],
+  estandar: ["fundacion", "normal", "vip", "teorico"],
   motorizados: ["teorico"],
   pesados: ["teorico"],
 };
@@ -98,6 +110,8 @@ async function confirmarPago(req, res, next) {
     // ProgresoEstudiante en el momento de confirmar el pago — una sola
     // vez, no se vuelve a tocar después (ver models/ProgresoEstudiante.js
     // y ANALISIS_MOTORISTA_PESADOS.md, sección 3).
+    // ACTUALIZADO (13/09/2026): mismo espejo para `tipoPlan` — ver
+    // ANALISIS_COBERTURA_PRACTICA.md, sección 5.
     await ProgresoEstudiante.findOneAndUpdate(
       { userId: inscripcion.userId },
       {
@@ -105,6 +119,7 @@ async function confirmarPago(req, res, next) {
           userId: inscripcion.userId,
           sesionActualDesbloqueada: 1,
           programa: inscripcion.programa || "estandar",
+          tipoPlan: inscripcion.tipoPlan || null,
         },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true },
@@ -259,6 +274,38 @@ async function crearOReenviarInscripcionPropia(req, res, next) {
         success: false,
         error: `tipoPlan debe ser uno de: ${TIPOS_PLAN_POR_PROGRAMA[programa].join(", ")} para el programa "${programa}".`,
       });
+    }
+
+    // NUEVO (13/09/2026): cobertura geográfica de la práctica de manejo —
+    // ver ANALISIS_COBERTURA_PRACTICA.md, sección "Cambios de lógica",
+    // inscripcionController.js. Solo aplica a "estandar": Motorizados y
+    // Pesados ya son 100% teóricos sin importar el municipio, y ya
+    // quedaron validados arriba contra TIPOS_PLAN_POR_PROGRAMA.
+    if (programa === "estandar") {
+      // Si el municipio no está seteado (cuenta vieja que nunca lo llenó,
+      // ver User.js), se trata igual que "no cubierto" — mejor pedirle el
+      // dato antes de dejarla avanzar que asumir cobertura sin saberlo.
+      const cubierto = req.usuario.municipio
+        ? Boolean(
+            await MunicipioPractica.exists({
+              provincia: req.usuario.provincia,
+              municipio: req.usuario.municipio,
+              activo: true,
+            }),
+          )
+        : false;
+
+      if (!cubierto && tipoPlan !== "teorico") {
+        return res.status(400).json({
+          success: false,
+          error: req.usuario.municipio
+            ? `Por ahora la práctica de manejo presencial no está disponible en ${req.usuario.municipio}. Elige la modalidad "Solo Teórico".`
+            : "Antes de inscribirte necesitamos saber tu municipio — actualiza tu perfil o contacta a la administración.",
+        });
+      }
+      // Si SÍ está cubierto, cualquiera de los 4 tipoPlan de "estandar" es
+      // válido — no hace falta rechazar "teorico" para quien tiene
+      // cobertura, alguien podría preferirlo igual por precio.
     }
 
     if (!req.usuario.emailVerificado) {

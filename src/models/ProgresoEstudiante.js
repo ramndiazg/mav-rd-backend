@@ -19,6 +19,16 @@ const progresoSchema = new mongoose.Schema(
     // aplica la práctica de manejo (ver utils/elegibilidadPractica.js).
     programa: { type: String, default: "estandar" },
 
+    // NUEVO (13/09/2026): mismo espejo que `programa`, pero para
+    // Inscripcion.tipoPlan — seteado una sola vez al confirmar el pago
+    // (ver inscripcionController.js#confirmarPago). Necesario porque, a
+    // diferencia de Motorizados/Pesados (donde TODO el programa es
+    // teórico), en "estandar" conviven planes con y sin práctica: el
+    // criterio de si aplica la práctica de manejo ya no puede depender
+    // solo de `programa` (ver utils/elegibilidadPractica.js y
+    // ANALISIS_COBERTURA_PRACTICA.md).
+    tipoPlan: { type: String, default: null },
+
     sesionActualDesbloqueada: { type: Number, default: 0 },
     sesionesAprobadas: { type: [Number], default: [] },
     cursoCompletado: { type: Boolean, default: false },

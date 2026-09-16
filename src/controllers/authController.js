@@ -50,6 +50,12 @@ async function registro(req, res, next) {
       email,
       password,
       provincia,
+      // NUEVO (13/09/2026): se pide junto a provincia, mismo <select> en
+      // cascada — ver ANALISIS_COBERTURA_PRACTICA.md. Solo se exige para
+      // cuentas nuevas; las cuentas viejas quedan con municipio: null por
+      // decisión (sin migración) y se tratan como "no cubierto" al
+      // inscribirse en estandar (ver inscripcionController.js).
+      municipio,
       fechaNacimiento,
       captchaToken,
       // NUEVO (10/09/2026): honeypot — campo invisible para una persona
@@ -78,6 +84,7 @@ async function registro(req, res, next) {
       !email ||
       !password ||
       !provincia ||
+      !municipio ||
       !fechaNacimiento
     ) {
       return res
@@ -105,6 +112,7 @@ async function registro(req, res, next) {
       email,
       passwordHash,
       provincia,
+      municipio,
       fechaNacimiento,
       rol: "estudiante",
       tokenVerificacionEmail,

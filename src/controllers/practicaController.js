@@ -1,9 +1,7 @@
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const User = require("../models/User");
 const Inscripcion = require("../models/Inscripcion");
-const {
-  requierePracticaDeManejo,
-} = require("../utils/elegibilidadPractica");
+const { requierePracticaDeManejo } = require("../utils/elegibilidadPractica");
 
 // GET /api/practica/pendientes — conductor/admin: estudiantes que
 // terminaron la teoría (4 sesiones + 4 exámenes) y todavía esperan que un
@@ -41,9 +39,19 @@ async function listarPendientes(req, res, next) {
       inscripciones.map((i) => [String(i.userId), i.tipoPlan]),
     );
 
+    // NUEVO (13/09/2026): tercer argumento `tipoPlan` — se usa
+    // planPorUsuario (ya resuelto arriba desde Inscripcion.tipoPlan) en vez
+    // de esperar a que ProgresoEstudiante.tipoPlan se propague para
+    // inscripciones viejas; ambos deberían coincidir para cualquier
+    // inscripción confirmada después de este cambio. Ver
+    // ANALISIS_COBERTURA_PRACTICA.md.
     const data = progresos
       .filter((p) =>
-        requierePracticaDeManejo(usuariosPorId.get(String(p.userId)), p.programa),
+        requierePracticaDeManejo(
+          usuariosPorId.get(String(p.userId)),
+          p.programa,
+          planPorUsuario.get(String(p.userId)),
+        ),
       )
       .map((p) => {
         const usuario = usuariosPorId.get(String(p.userId));

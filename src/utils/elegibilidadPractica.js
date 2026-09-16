@@ -19,14 +19,25 @@
 // (`Inscripcion.programa` o `ProgresoEstudiante.programa`) — se deja
 // opcional para no romper ningún llamado viejo que todavía no lo pase,
 // aunque a partir de ahora todos los llamados reales sí lo hacen.
+//
+// ACTUALIZADO (13/09/2026): tercer parámetro opcional `tipoPlan` — ver
+// ANALISIS_COBERTURA_PRACTICA.md. Antes de esto, "estandar" era siempre
+// con práctica y "motorizados"/"pesados" siempre sin ella, así que bastaba
+// con el `programa`. Ahora "estandar" también puede tener un plan
+// "teorico" (municipio sin cobertura de práctica presencial), así que el
+// criterio de si aplica la práctica ya no puede depender solo del
+// programa — hace falta mirar también el tipoPlan concreto de la
+// estudiante. Se deja opcional (no rompe llamados viejos sin actualizar),
+// aunque los 4 call sites reales sí pasan `progreso.tipoPlan`.
 const PROGRAMAS_SIN_PRACTICA = ["motorizados", "pesados"];
 
-function requierePracticaDeManejo(usuario, programa) {
+function requierePracticaDeManejo(usuario, programa, tipoPlan) {
   const tieneGrupo = Boolean(usuario?.grupoId);
   const esProgramaSinPractica = Boolean(
     programa && PROGRAMAS_SIN_PRACTICA.includes(programa),
   );
-  return !tieneGrupo && !esProgramaSinPractica;
+  const esPlanTeorico = tipoPlan === "teorico";
+  return !tieneGrupo && !esProgramaSinPractica && !esPlanTeorico;
 }
 
 module.exports = { requierePracticaDeManejo, PROGRAMAS_SIN_PRACTICA };

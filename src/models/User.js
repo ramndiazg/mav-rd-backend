@@ -33,6 +33,15 @@ const userSchema = new mongoose.Schema(
     },
     passwordHash: { type: String, required: true },
     provincia: { type: String, required: true },
+    // NUEVO (13/09/2026): municipio dentro de la provincia — se pide junto
+    // a provincia en /registro (select en cascada). Se usa para saber si a
+    // la estudiante le aplica la práctica de manejo presencial en el
+    // programa "estandar" (ver MunicipioPractica y
+    // ANALISIS_COBERTURA_PRACTICA.md). default: null para las cuentas
+    // creadas antes de este campo — decisión cerrada: sin migración, se
+    // tratan igual que "municipio no cubierto" (ver
+    // inscripcionController.js).
+    municipio: { type: String, default: null },
     fechaNacimiento: { type: Date, required: true },
     rol: {
       // NUEVO: "conductor" (05/09/2026) — chofer que aprueba la práctica

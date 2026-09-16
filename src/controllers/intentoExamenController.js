@@ -3,9 +3,7 @@ const Sesion = require("../models/Sesion");
 const ProgresoEstudiante = require("../models/ProgresoEstudiante");
 const Inscripcion = require("../models/Inscripcion");
 const { intentarDesbloquear } = require("./examenController");
-const {
-  requierePracticaDeManejo,
-} = require("../utils/elegibilidadPractica");
+const { requierePracticaDeManejo } = require("../utils/elegibilidadPractica");
 const {
   notificarEstudianteListaParaPractica,
 } = require("../utils/notificaciones");
@@ -297,7 +295,11 @@ async function entregarIntento(req, res, next) {
         if (
           !completadoAntes &&
           progreso.cursoCompletado &&
-          requierePracticaDeManejo(req.usuario, progreso.programa)
+          requierePracticaDeManejo(
+            req.usuario,
+            progreso.programa,
+            progreso.tipoPlan,
+          )
         ) {
           const inscripcion = await Inscripcion.findOne({
             userId: intento.userId,
