@@ -115,10 +115,30 @@ const DECLARACIONES_HERRAMIENTAS = [
   },
 ];
 
-// Convierte "YYYY-MM-DD" a un rango [inicio del día, fin del día] en UTC.
+// FIX (16/09/2026): misma causa que el bug de resumenDiario.js — "today"
+// se construía como medianoche a medianoche en UTC, no en hora de Santo
+// Domingo (UTC-4, fija todo el año, sin horario de verano). Cuando María
+// le pide al Asistente "hoy" o "este mes", el corte real de ese día/mes
+// en RD queda corrido 4 horas respecto al corte en UTC: se cuentan datos
+// de las primeras 4h del día anterior y se pierden los de las últimas 4h
+// del día pedido. Mismo arreglo que en resumenDiario.js: se corrige el
+// offset antes de construir el rango en vez de usar los componentes UTC
+// tal cual.
+const OFFSET_RD_MS = 4 * 60 * 60 * 1000;
+
+// Convierte "YYYY-MM-DD" (fecha en hora de RD, que es como Gemini y María
+// piensan las fechas) a un rango [inicio del día, fin del día] expresado
+// en instantes UTC reales.
 function rangoDelDia(fechaInicioStr, fechaFinStr) {
-  const inicio = new Date(`${fechaInicioStr}T00:00:00.000Z`);
-  const fin = new Date(`${fechaFinStr}T23:59:59.999Z`);
+  // "T00:00:00.000Z" interpretado como si esos dígitos fueran hora RD, no
+  // UTC — se le suma el offset para obtener el instante UTC real de esa
+  // medianoche en Santo Domingo.
+  const inicio = new Date(
+    new Date(`${fechaInicioStr}T00:00:00.000Z`).getTime() + OFFSET_RD_MS,
+  );
+  const fin = new Date(
+    new Date(`${fechaFinStr}T23:59:59.999Z`).getTime() + OFFSET_RD_MS,
+  );
   return { inicio, fin };
 }
 
@@ -143,8 +163,11 @@ const IMPLEMENTACIONES = {
   },
 
   async balanceMes({ mes, anio }) {
-    const inicio = new Date(Date.UTC(anio, mes - 1, 1, 0, 0, 0));
-    const fin = new Date(Date.UTC(anio, mes, 0, 23, 59, 59, 999)); // último día del mes
+    // FIX (16/09/2026): mismo offset que rangoDelDia — ver su comentario.
+    const inicio = new Date(Date.UTC(anio, mes - 1, 1, 0, 0, 0) + OFFSET_RD_MS);
+    const fin = new Date(
+      Date.UTC(anio, mes, 0, 23, 59, 59, 999) + OFFSET_RD_MS,
+    ); // último día del mes, hora RD
     const movimientos = await MovimientoContable.find({
       fecha: { $gte: inicio, $lte: fin },
     }).lean();

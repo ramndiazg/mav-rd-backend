@@ -9,7 +9,7 @@ const {
 // 2.5 Flash, que Google dejó de ofrecer a cuentas nuevas).
 const MODELO_GEMINI = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
-const INSTRUCCION_SISTEMA = `Eres el asistente interno de María Díaz, fundadora de Muvo RD Vial
+const INSTRUCCION_SISTEMA_BASE = `Eres el asistente interno de María Díaz, fundadora de Muvo RD Vial
 (escuela de educación vial en Santo Domingo, República Dominicana).
 
 Reglas estrictas:
@@ -22,6 +22,35 @@ Reglas estrictas:
 - Los montos son en pesos dominicanos (RD$).
 - No tienes forma de modificar ni borrar nada — solo puedes leer datos.`;
 
+// FIX (16/09/2026): antes INSTRUCCION_SISTEMA era un string fijo que
+// nunca decía qué día es "hoy" — cuando María preguntaba algo con fecha
+// relativa ("hoy", "ayer", "esta semana", "este mes"), Gemini tenía que
+// inventarse fechaInicio/fechaFin de las herramientas (rangoDelDia,
+// balanceMes) a partir de su propia idea de la fecha actual, que para un
+// modelo de lenguaje no es el reloj real — podía estar respondiendo
+// sobre un rango de fecha completamente distinto al que María quería
+// decir, sin que se notara en la respuesta.
+//
+// Ahora se construye de nuevo en cada pregunta (es barato, un template
+// string) con la fecha real del servidor, corregida a hora de Santo
+// Domingo (UTC-4, fija todo el año) — mismo offset que ya usa
+// utils/geminiHerramientas.js para las herramientas de fecha, y
+// utils/resumenDiario.js para el resumen diario.
+const OFFSET_RD_MS = 4 * 60 * 60 * 1000;
+
+function fechaHoyEnRD() {
+  return new Date(Date.now() - OFFSET_RD_MS).toISOString().slice(0, 10);
+}
+
+function construirInstruccionSistema() {
+  return `${INSTRUCCION_SISTEMA_BASE}
+- Hoy es ${fechaHoyEnRD()} (fecha en hora de Santo Domingo, República
+  Dominicana). Usa esta fecha como referencia real para cualquier
+  pregunta con fecha relativa ("hoy", "ayer", "esta semana", "este mes",
+  "el mes pasado", etc.) al construir fechaInicio/fechaFin, mes o año
+  para las herramientas — nunca la infieras de otra forma.`;
+}
+
 function esperar(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -30,7 +59,7 @@ function esperar(ms) {
 // cierta frecuencia — es temporal, así que reintentamos un par de veces
 // con una pequeña espera antes de rendirnos, en vez de fallarle a la
 // fundadora en el primer tropiezo.
-async function llamarGemini(contents) {
+async function llamarGemini(contents, instruccionSistema) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODELO_GEMINI}:generateContent?key=${process.env.GEMINI_API_KEY}`;
   const MAX_INTENTOS = 3;
 
@@ -39,7 +68,7 @@ async function llamarGemini(contents) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: INSTRUCCION_SISTEMA }] },
+        systemInstruction: { parts: [{ text: instruccionSistema }] },
         contents,
         tools: [{ functionDeclarations: DECLARACIONES_HERRAMIENTAS }],
       }),
@@ -79,11 +108,16 @@ async function preguntar(req, res, next) {
     }
 
     const contents = [{ role: "user", parts: [{ text: pregunta }] }];
+    // FIX (16/09/2026): se construye una sola vez por pregunta (no por
+    // cada paso del loop de abajo) — todos los pasos de una misma
+    // pregunta deben ver la misma fecha "hoy", aunque en la práctica el
+    // loop entero dura segundos.
+    const instruccionSistema = construirInstruccionSistema();
     const MAX_PASOS = 5; // evita loops infinitos si el modelo se queda pidiendo herramientas
     let ultimaRespuesta = null;
 
     for (let paso = 0; paso < MAX_PASOS; paso++) {
-      ultimaRespuesta = await llamarGemini(contents);
+      ultimaRespuesta = await llamarGemini(contents, instruccionSistema);
       const candidato = ultimaRespuesta.candidates?.[0];
       const partes = candidato?.content?.parts || [];
 
