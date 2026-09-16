@@ -17,9 +17,6 @@ const faqRoutes = require("./routes/faqRoutes");
 const contabilidadRoutes = require("./routes/contabilidadRoutes");
 const usuarioRoutes = require("./routes/usuarioRoutes");
 const contenidoRoutes = require("./routes/contenido");
-const grupoRoutes = require("./routes/grupoRoutes");
-const ubicacionesRoutes = require("./routes/ubicacionesRoutes");
-const municipioPracticaRoutes = require("./routes/municipioPracticaRoutes");
 const contenidoSesionRoutes = require("./routes/contenidoSesion");
 const destinatarioRoutes = require("./routes/destinatarioRoutes");
 const destinatarioPracticaRoutes = require("./routes/destinatarioPracticaRoutes");
@@ -32,6 +29,8 @@ const resumenRoutes = require("./routes/resumenRoutes");
 const testPsicologicoRoutes = require("./routes/testPsicologicoRoutes");
 const cuestionarioEscolarRoutes = require("./routes/cuestionarioEscolarRoutes");
 const grupoRoutes = require("./routes/grupoRoutes");
+const ubicacionesRoutes = require("./routes/ubicacionesRoutes");
+const municipioPracticaRoutes = require("./routes/municipioPracticaRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -113,15 +112,14 @@ app.use("/api/destinatarios-practica", destinatarioPracticaRoutes);
 app.use("/api/instructores", instructorRoutes);
 app.use("/api/practica", practicaRoutes);
 app.use("/api/empresas", empresasRoutes);
-app.use("/api/grupos", grupoRoutes);
-app.use("/api/ubicaciones", ubicacionesRoutes);
-app.use("/api/municipios-practica", municipioPracticaRoutes);
 app.use("/api/escolar", escolarRoutes);
 app.use("/api/chatbot", chatbotRoutes);
 app.use("/api/interno", resumenRoutes);
 app.use("/api/test-psicologico", testPsicologicoRoutes);
 app.use("/api/cuestionario-escolar", cuestionarioEscolarRoutes);
 app.use("/api/grupos", grupoRoutes);
+app.use("/api/ubicaciones", ubicacionesRoutes);
+app.use("/api/municipios-practica", municipioPracticaRoutes);
 
 // Cualquier ruta no encontrada
 app.use((req, res) => {
