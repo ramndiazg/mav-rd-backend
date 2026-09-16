@@ -38,11 +38,38 @@ async function enviarMensajeTelegramDirecto({ chatId, texto }) {
   }
 }
 
+// FIX (16/09/2026): antes esta función calculaba "hoy" usando el día
+// calendario en UTC del reloj del servidor — pero el cron que dispara
+// este resumen corre a las 9:00 PM hora de Santo Domingo, que en UTC ya
+// es la madrugada del día SIGUIENTE (01:00 UTC). Con el código viejo, en
+// ese momento "hoy" (en UTC) apenas llevaba 1 de sus 24 horas — el resto
+// de la ventana que se consultaba en Mongo todavía no había pasado, así
+// que casi nunca había datos que contar y el resumen llegaba en cero
+// prácticamente todos los días.
+//
+// República Dominicana está en AST (UTC-4) todo el año, sin horario de
+// verano, así que el offset es una constante fija — no hace falta ningún
+// paquete de zonas horarias para esto.
+const OFFSET_RD_MS = 4 * 60 * 60 * 1000;
+
 function inicioYFinDeHoy() {
-  const ahora = new Date();
-  const inicio = new Date(
-    Date.UTC(ahora.getUTCFullYear(), ahora.getUTCMonth(), ahora.getUTCDate()),
+  // "Ahora", pero con el reloj corrido 4 horas atrás — sus componentes
+  // UTC (año/mes/día) son los de la fecha en RD en este instante, no los
+  // de UTC.
+  const ahoraComoSiFueraRD = new Date(Date.now() - OFFSET_RD_MS);
+
+  // Medianoche de ESE día, todavía expresada con el reloj corrido.
+  const medianocheComoSiFueraRD = new Date(
+    Date.UTC(
+      ahoraComoSiFueraRD.getUTCFullYear(),
+      ahoraComoSiFueraRD.getUTCMonth(),
+      ahoraComoSiFueraRD.getUTCDate(),
+    ),
   );
+
+  // Se deshace el corrimiento: el instante real (en UTC) que corresponde
+  // a la medianoche en RD.
+  const inicio = new Date(medianocheComoSiFueraRD.getTime() + OFFSET_RD_MS);
   const fin = new Date(inicio.getTime() + 24 * 60 * 60 * 1000 - 1);
   return { inicio, fin };
 }
