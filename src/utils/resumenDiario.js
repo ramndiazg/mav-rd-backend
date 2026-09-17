@@ -89,8 +89,27 @@ async function calcularResumenDelDia() {
     intentosHoy,
   ] = await Promise.all([
     Inscripcion.countDocuments(filtroHoy),
-    Inscripcion.countDocuments({ ...filtroHoy, estadoPago: "pagado" }),
-    Inscripcion.countDocuments({ ...filtroHoy, estadoPago: "rechazado" }),
+    // FIX (17/09/2026): antes filtraba por `createdAt` (cuándo se CREÓ la
+    // inscripción), no por cuándo se confirmó/rechazó el pago. Con voucher,
+    // la inscripción casi siempre se crea un día y se confirma otro — con
+    // el filtro viejo, esa confirmación no aparecía NUNCA en el resumen: ni
+    // el día de creación (todavía no estaba pagada) ni el día real de
+    // confirmación (el filtro miraba `createdAt`, no `fechaPago`). Bug
+    // reportado el 17/09/2026: "el correo llega con los datos en cero"
+    // incluso en días con actividad real. `fechaPago` se setea en
+    // `inscripcionController.js#confirmarPago`, exactamente para esto.
+    Inscripcion.countDocuments({
+      estadoPago: "pagado",
+      fechaPago: { $gte: inicio, $lte: fin },
+    }),
+    // Mismo bug, mismo fix — `rechazarPago` no tiene un campo `fechaRechazo`
+    // propio, así que se usa `updatedAt` (Mongoose lo actualiza solo al
+    // hacer `.save()`, y `rechazarPago` no toca la inscripción por ninguna
+    // otra razón antes de rechazarla).
+    Inscripcion.countDocuments({
+      estadoPago: "rechazado",
+      updatedAt: { $gte: inicio, $lte: fin },
+    }),
     Inscripcion.countDocuments({ estadoPago: "pendiente_verificacion" }), // total acumulado, no solo hoy
     User.countDocuments({ ...filtroHoy, rol: "estudiante" }),
     Diploma.countDocuments({ createdAt: { $gte: inicio, $lte: fin } }),
