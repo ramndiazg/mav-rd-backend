@@ -1,6 +1,7 @@
 const DestinatarioNotificacion = require("../models/DestinatarioNotificacion");
 const DestinatarioPractica = require("../models/DestinatarioPractica");
 const Instructor = require("../models/Instructor");
+const Configuracion = require("../models/Configuracion");
 
 // Usa fetch nativo de Node (disponible desde Node 18+) — sin agregar
 // dependencias nuevas al proyecto.
@@ -306,6 +307,79 @@ async function notificarEstudianteListaParaPractica({
   }
 }
 
+// --- NUEVO: reportes/incidencias de estudiantes hacia coordinadora/admin ---
+// Reutiliza el mismo mecanismo de siempre (DestinatarioNotificacion +
+// Resend/Telegram), pero primero consulta un toggle por tipo guardado en
+// Configuracion (clave "reportes_notificaciones_activas") — así se puede
+// desactivar el aviso de un tipo concreto (ej. "contenido") sin tocar a
+// los destinatarios ni el resto de notificaciones que usan esa misma
+// colección (vouchers/balance/empresas).
+const ETIQUETAS_TIPO_REPORTE = {
+  tecnico: "Error técnico",
+  contenido: "Duda o atasco con el contenido",
+  pago: "Pago o comprobante",
+  otro: "Otro",
+};
+
+async function notificarNuevoReporte({
+  nombreEstudiante,
+  tipo,
+  tipoOtro,
+  mensaje,
+}) {
+  try {
+    const config = await Configuracion.findOne({
+      clave: "reportes_notificaciones_activas",
+    });
+    // Si nunca se configuró, se notifica por defecto (mismo criterio que
+    // el resto del proyecto: sin configuración explícita, no se pierde
+    // ningún aviso).
+    const activoParaEsteTipo = config?.valor?.[tipo] ?? true;
+    if (!activoParaEsteTipo) return;
+
+    const destinatarios = await DestinatarioNotificacion.find({ activo: true });
+    const etiquetaTipo =
+      tipo === "otro" && tipoOtro ? tipoOtro : ETIQUETAS_TIPO_REPORTE[tipo];
+
+    const asunto = `Nuevo reporte de estudiante — ${etiquetaTipo}`;
+    const urlPanel = `${process.env.FRONTEND_URL}/panel/soporte`;
+    const textoPlano = `${nombreEstudiante} envió un reporte (${etiquetaTipo}): "${mensaje}". Respóndelo aquí: ${urlPanel}`;
+    const htmlEmail = plantillaCorreo({
+      titulo: "Nuevo reporte de estudiante",
+      cuerpoHtml: `
+        <p><strong>${nombreEstudiante}</strong> envió un reporte.</p>
+        <p><strong>Tipo:</strong> ${etiquetaTipo}</p>
+        <p><strong>Mensaje:</strong><br/>${mensaje}</p>
+      `,
+      botonTexto: "Responder en el panel",
+      botonUrl: urlPanel,
+    });
+
+    await Promise.all(
+      destinatarios.map(async (d) => {
+        try {
+          if (d.tipo === "email") {
+            await enviarEmailResend({
+              to: d.valor,
+              subject: asunto,
+              html: htmlEmail,
+            });
+          } else if (d.tipo === "telegram") {
+            await enviarMensajeTelegram({ chatId: d.valor, texto: textoPlano });
+          }
+        } catch (err) {
+          console.error(
+            `No se pudo notificar a ${d.tipo}:${d.valor} —`,
+            err.message,
+          );
+        }
+      }),
+    );
+  } catch (err) {
+    console.error("Error notificando nuevo reporte:", err.message);
+  }
+}
+
 async function enviarCorreoVerificacion({ to, nombre, token }) {
   try {
     const urlVerificacion = `${process.env.FRONTEND_URL}/verificar-email?token=${token}`;
@@ -509,6 +583,7 @@ module.exports = {
   enviarSolicitudEmpresarial,
   enviarSolicitudEscolar,
   notificarEstudianteListaParaPractica,
+  notificarNuevoReporte,
   enviarCorreoVerificacion,
   enviarCorreoPagoConfirmado,
   enviarCorreoPagoRechazado,

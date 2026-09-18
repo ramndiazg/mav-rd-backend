@@ -31,6 +31,7 @@ const cuestionarioEscolarRoutes = require("./routes/cuestionarioEscolarRoutes");
 const grupoRoutes = require("./routes/grupoRoutes");
 const ubicacionesRoutes = require("./routes/ubicacionesRoutes");
 const municipioPracticaRoutes = require("./routes/municipioPracticaRoutes");
+const reporteRoutes = require("./routes/reporteRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -120,6 +121,7 @@ app.use("/api/cuestionario-escolar", cuestionarioEscolarRoutes);
 app.use("/api/grupos", grupoRoutes);
 app.use("/api/ubicaciones", ubicacionesRoutes);
 app.use("/api/municipios-practica", municipioPracticaRoutes);
+app.use("/api/reportes", reporteRoutes);
 
 // Cualquier ruta no encontrada
 app.use((req, res) => {
