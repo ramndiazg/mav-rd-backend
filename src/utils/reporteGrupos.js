@@ -161,4 +161,16 @@ async function ejecutarYEnviarReportesGrupo() {
   return resultados;
 }
 
-module.exports = { ejecutarYEnviarReportesGrupo };
+// NUEVO (19/09/2026): envío manual desde el panel (botón "Enviar reporte
+// ahora" en /panel/grupos/[id]). Manda el mismo correo de avance que el
+// cron, pero NO lo marca como reporte final ni apaga el grupo — eso solo
+// lo decide el cron (ejecutarYEnviarReportesGrupo), para que un envío
+// manual nunca cambie el estado del grupo por accidente.
+async function enviarReporteAhora(grupo) {
+  const { filas } = await calcularProgresoGrupo(grupo);
+  if (filas.length === 0) return { enviado: false, cantidad: 0 };
+  const enviado = await enviarReporteDeGrupo(grupo, { filas, esFinal: false });
+  return { enviado, cantidad: filas.length };
+}
+
+module.exports = { ejecutarYEnviarReportesGrupo, enviarReporteAhora };
